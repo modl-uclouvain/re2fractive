@@ -1,0 +1,3 @@
+pandas
+optimade[http_client]
+tqdm
