@@ -1,22 +1,34 @@
 import json
 from pathlib import Path
-import pandas as pd
 
-data_path = Path(__file__).parent.parent / "data"
+import pandas as pd
+import tqdm
+from modnet.preprocessing import MODData
+from optimade.adapters import Structure
+from optimade.models.utils import reduce_formula 
+
+data_path = Path(__file__).absolute().parent.parent / "data"
 db_path = data_path / "db.csv"
 structures_path = data_path / "structures.json"
 
 with open(structures_path) as f:
     structures = json.load(f)
 
-breakpoint()
+pmg_structures = []
+targets = []
 
-from modnet.preprocessing import MODData
+for ind, s in tqdm.tqdm(enumerate(structures.items())):
+    s[1]["attributes"]["chemical_formula_reduced"] = reduce_formula(s[1]["attributes"]["chemical_formula_reduced"])
+    targets.append(s[1]["attributes"]["_naccarato_refractive_index"])
+    pmg_structures.append(Structure(s[1], validate=True).as_pymatgen)
+    
 moddata = MODData(
-    structures,
-    targets=pd.read_csv(db_path)["Ref_index (1)"],
-    target_names=["n"],
+    materials=pmg_structures,
+    targets=targets,
+    target_names=["refractive_index"],
     structure_ids=structures.keys(),
 )
+moddata.featurizer.featurizer_mode = "single"
+moddata.featurize(n_jobs=1)
 
-moddata.featurize()
+moddata.save("mod.data")

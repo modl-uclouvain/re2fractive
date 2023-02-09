@@ -5,9 +5,10 @@ OPTIMADE then saves them locally.
 """
 
 from pathlib import Path
+import contextlib
 import json
-from optimade.client import OptimadeClient
 
+from optimade.client import OptimadeClient
 import pandas as pd
 import tqdm
 
@@ -26,7 +27,6 @@ df = pd.read_csv(db_path)
 
 client = OptimadeClient(
     base_urls="https://optimade.materialsproject.org",
-    silent=True,
 )
 
 structures = {}
@@ -34,7 +34,7 @@ if structures_path.exists():
     with open(structures_path, "r") as f:
         structures = json.load(f)
 
-for ind, row in tqdm.tqdm(df.iterrows(), ):
+for ind, row in tqdm.tqdm(df.iterrows(), total=len(df)):
 
     mp_id = row["MP_id"]
     if mp_id in structures:
@@ -43,10 +43,13 @@ for ind, row in tqdm.tqdm(df.iterrows(), ):
     filter_ = f'id = "{mp_id}"'
     
     try:
-        structure = client.get(filter_)["structures"][filter_]["https://optimade.materialsproject.org"]["data"][0]
-        structures[mp_id] = structure
+        # redirect output from stdout to dev null
+        with contextlib.redirect_stdout(None) and contextlib.redirect_stderr(None):
+            structure = client.get(filter_)["structures"][filter_]["https://optimade.materialsproject.org"]["data"][0]
     except Exception:
         print(f"No structure found for {mp_id}")
-    if ind % 10 == 0:
+    structure["attributes"]["_naccarato_refractive_index"] = row["Ref_index (1)"]
+    structures[mp_id] = structure
+    if ind % 100 == 0:
         with open(structures_path, "w") as f:
             json.dump(structures, f, indent=2)
