@@ -19,13 +19,13 @@ targets = []
 
 for ind, s in tqdm.tqdm(enumerate(structures.items())):
     s[1]["attributes"]["chemical_formula_reduced"] = reduce_formula(s[1]["attributes"]["chemical_formula_reduced"])
-    targets.append(s[1]["attributes"]["_naccarato_refractive_index"])
-    pmg_structures.append(Structure(s[1], validate=True).as_pymatgen)
+    targets.append((s[1]["attributes"]["_naccarato_refractive_index"], s[1]["attributes"]["_naccarato_optical_gap"]))
+    pmg_structures.append(Structure(s[1]).as_pymatgen)
     
 moddata = MODData(
     materials=pmg_structures,
     targets=targets,
-    target_names=["refractive_index"],
+    target_names=["refractive_index", "optical_gap"],
     structure_ids=structures.keys(),
 )
 moddata.featurizer.featurizer_mode = "single"
