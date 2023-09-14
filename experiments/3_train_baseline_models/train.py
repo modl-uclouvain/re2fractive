@@ -1,4 +1,6 @@
 import os
+import string
+import random
 import numpy as np
 from sklearn.model_selection import KFold
 from pathlib import Path
@@ -25,9 +27,14 @@ if __name__ == "__main__":
     from modnet.models import EnsembleMODNetModel
     from modnet.preprocessing import MODData
 
-    data = MODData.load("mod.data_feature_selected")
+    data: MODData = MODData.load("mod.data_feature_selected")
 
-    experiment_name = "baseline_kfold_ensemble"
+    # scrub now missing features
+    data.optimal_features = [col for col in data.optimal_features if col not in ['AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010', 'ElectronegativityDiff|maximum EN difference', 'ElectronegativityDiff|mean EN difference']]
+    for k in data.optimal_features_by_target:
+        data.optimal_features_by_target[k] = [col for col in data.optimal_features_by_target[k] if col not in ['AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010', 'ElectronegativityDiff|maximum EN difference', 'ElectronegativityDiff|mean EN difference']]
+
+    experiment_name = "baseline_kfold_ensemble" + "".join(random.choice(string.ascii_lowercase) for _ in range(5))
 
     # train_indices, test_indices = train_test_split(
     #     list(range(len(data))), test_size=0.2, random_state=42
@@ -50,9 +57,9 @@ if __name__ == "__main__":
 
         else:
             model = EnsembleMODNetModel(
-                targets=[[["refractive_index"]]],
-                weights={"refractive_index": 1},
-                num_neurons=([64], [32], [16], [16]),
+                targets=[[["refractive_index", "optical_gap"]]],
+                weights={"refractive_index": 1, "optical_gap": 1},
+                num_neurons=([64], [32, 32], [16], [16]),
                 n_feat=64,
                 n_models=16,
             )

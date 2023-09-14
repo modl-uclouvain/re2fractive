@@ -58,5 +58,4 @@ featurizer.featurizer_mode = "multi"
 featurizer.set_n_jobs(8)
 
 df_featurized = featurizer.featurize(df_structures)
-breakpoint()
 df_featurized.to_pickle(data_path.parent / "mp_2023_df_featurized_multi.pkl")
