@@ -50,8 +50,6 @@ df_structures = pd.DataFrame.from_dict(
     {doc["id"]: {"structure": Structure(doc).as_pymatgen} for doc in optimade_docs}, orient="index"
 )
 
-
-
 featurizer = Matminer2023Featurizer()
 featurizer.oxid_composition_featurizers = []
 featurizer.featurizer_mode = "multi"

@@ -5,11 +5,13 @@ import numpy as np
 from sklearn.model_selection import KFold
 from pathlib import Path
 import matplotlib.pyplot as plt
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 
 if __name__ == "__main__":
     import tensorflow as tf
+    targets = ["refractive_index"]
+    experiment_name = "baseline_kfold_ensemble-" + "-".join(targets) + "-" + "".join(random.choice(string.ascii_lowercase) for _ in range(5))
 
     gpus = tf.config.list_physical_devices("GPU")
     gpus = None
@@ -29,18 +31,19 @@ if __name__ == "__main__":
 
     data: MODData = MODData.load("mod.data_feature_selected")
 
-    # scrub now missing features
-    data.optimal_features = [col for col in data.optimal_features if col not in ['AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010', 'ElectronegativityDiff|maximum EN difference', 'ElectronegativityDiff|mean EN difference']]
+# scrub now missing features
+    bad_features = [
+        'AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010',
+        'ElectronegativityDiff|maximum EN difference',
+        'ElectronegativityDiff|mean EN difference',
+        'AtomicPackingEfficiency|dist from 3 clusters |APE| < 0.010',
+        'AtomicPackingEfficiency|mean simul. packing efficiency',
+        'ElectronegativityDiff|range EN difference',
+        'ElectronegativityDiff|minimum EN difference'
+    ]
+    data.optimal_features = [col for col in data.optimal_features if col not in bad_features]
     for k in data.optimal_features_by_target:
-        data.optimal_features_by_target[k] = [col for col in data.optimal_features_by_target[k] if col not in ['AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010', 'ElectronegativityDiff|maximum EN difference', 'ElectronegativityDiff|mean EN difference']]
-
-    experiment_name = "baseline_kfold_ensemble" + "".join(random.choice(string.ascii_lowercase) for _ in range(5))
-
-    # train_indices, test_indices = train_test_split(
-    #     list(range(len(data))), test_size=0.2, random_state=42
-    # )
-
-    # train_moddata, val_moddata = data.split((train_indices, test_indices))
+        data.optimal_features_by_target[k] = [col for col in data.optimal_features_by_target[k] if col not in bad_features]
 
     kf = KFold(5, shuffle=True, random_state=42)
     scores = []
@@ -57,14 +60,17 @@ if __name__ == "__main__":
 
         else:
             model = EnsembleMODNetModel(
-                targets=[[["refractive_index", "optical_gap"]]],
-                weights={"refractive_index": 1, "optical_gap": 1},
-                num_neurons=([64], [32, 32], [16], [16]),
+                targets=[[["refractive_index"]]],
+                weights={"refractive_index": 1.0},
+                num_neurons=([128], [32], [32], [16]),
                 n_feat=64,
-                n_models=16,
+                n_models=32,
             )
 
-            model.fit(train_moddata)
+            model.fit(
+                train_moddata,
+                n_jobs=12,
+            )
             model.save(model_path)
 
             scores.append(model.evaluate(test_moddata))
@@ -82,8 +88,10 @@ if __name__ == "__main__":
             ls="none",
         )
 
-    print(scores)
-    print(np.mean(scores))
+    print("="*10 + f" {experiment_name} " + "="*10)
+    print("Training complete.")
+    print("Training complete.")
+    print(f"Accuracy: {np.mean(scores):.3f}±{np.std(scores):.3f}")
 
     plt.plot(
         np.linspace(

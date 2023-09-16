@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import tqdm
-from modnet.featurizers.presets import MatminerAll2023Featurizer
 from modnet.preprocessing import MODData
 from optimade.adapters import Structure
 from optimade.models.utils import reduce_formula
@@ -23,20 +22,17 @@ for ind, s in tqdm.tqdm(enumerate(structures.items())):
         s[1]["attributes"]["chemical_formula_reduced"]
     )
     targets.append(
-        (
-            s[1]["attributes"]["_naccarato_refractive_index"],
-            s[1]["attributes"]["_naccarato_average_optical_gap"],
-        )
+        s[1]["attributes"]["_naccarato_refractive_index"],
     )
     pmg_structures.append(Structure(s[1]).as_pymatgen)
 
 moddata = MODData(
     materials=pmg_structures,
     targets=targets,
-    target_names=["refractive_index", "optical_gap"],
+    target_names=["refractive_index"],
     structure_ids=structures.keys(),
 )
 moddata.featurizer.featurizer_mode = "single"
 moddata.featurize(n_jobs=6)
 
-moddata.save("mod_fewer.data")
+moddata.save("mod.data")
