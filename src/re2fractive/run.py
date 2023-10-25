@@ -105,21 +105,22 @@ def lookup_refractive_index_oracle(s):
         raise KeyError(f"Could not find id {id} in dataset")
 
 
-re2fractive = Campaign(
-    properties=["refractive_index", "band_gap", "hull_distance"],
-    oracles=[(["refractive_index"], lookup_refractive_index_oracle)],
-    datasets=[NaccaratoDataset, MP2023Dataset],
-    model=EnsembleMODNetModel,
-    logistics={
-        "local": False,
-        "jfr_project": "re2fractive",
-        "jfr_preferred_worker": "lumi",
-    },
-    learning_strategy={"min_data_points": 100, "min_increment": 5},
-    explore_acquisition_function=explore_stable_and_unique,
-    acquisition_function=explore_stable_and_unique,
-    drop_initial_cols=["refractive_index"],
-)
+if __name__ == "__main__":
+    re2fractive = Campaign(
+        properties=["refractive_index", "band_gap", "hull_distance"],
+        oracles=[(["refractive_index"], lookup_refractive_index_oracle)],
+        datasets=[NaccaratoDataset, MP2023Dataset],
+        model=EnsembleMODNetModel,
+        logistics={
+            "local": False,
+            "jfr_project": "re2fractive",
+            "jfr_preferred_worker": "lumi",
+        },
+        learning_strategy={"min_data_points": 100, "min_increment": 5},
+        explore_acquisition_function=explore_stable_and_unique,
+        acquisition_function=explore_stable_and_unique,
+        drop_initial_cols=["refractive_index"],
+    )
 
-re2fractive.run()
-re2fractive.dump_checkpoint("checkpoint.pkl")
+    re2fractive.run()
+    re2fractive.dump_checkpoint("checkpoint.pkl")
