@@ -15,6 +15,7 @@ from typing import Iterable
 from pathlib import Path
 import pandas as pd
 from re2fractive.campaign import Campaign, Dataset, OptimadeStructure
+
 from atomate2.vasp.jobs.core import DielectricMaker
 from modnet.models import EnsembleMODNetModel
 from pymatgen.core import Structure

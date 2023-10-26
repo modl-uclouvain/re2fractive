@@ -8,6 +8,7 @@ from jobflow import Maker, Job, Flow, run_locally
 from typing import Annotated, Callable, TypeAlias
 from optimade.adapters import Structure as OptimadeStructure
 from jobflow_remote import JobController, submit_flow
+from re2fractive.selection import extremise_expected_value, random_selection
 
 
 @dataclass
@@ -76,6 +77,7 @@ Oracle: TypeAlias = Callable | Maker
 
 @dataclass
 class Campaign:
+
     oracles: list[tuple[list[str], Oracle]]
     """A list of oracles that can be evaluated to obtain the 'ground truth', and
     the associated properites they can compute.
@@ -90,7 +92,7 @@ class Campaign:
     that can be used in acquisition functions.
     """
 
-    model: MODNetModel
+    model: type[MODNetModel]
     """The type of model to train and use for prediction."""
 
     datasets: list[Dataset]
@@ -99,17 +101,6 @@ class Campaign:
     These will be used in turn to train surrogate models and
     explore the space.
 
-    """
-
-    explore_acquisition_function: Callable
-    """An explore-stage acqusition function that can e.g., weight
-    property uncertainty vs. constraints to improve model performance
-    or simply explore the space.
-    """
-
-    acquisition_function: Callable
-    """An exploit-stage acqusition function that defines the desired
-    screening wrt. final constraints and optimisation targets.
     """
 
     logistics: CampaignLogistics
@@ -121,9 +112,33 @@ class Campaign:
     drop_initial_cols: list[str]
     """For testing, drop this column from the initial dataset."""
 
+    initial_model: MODNetModel | None = None
+    """An initial model to use to generate the first round of predictions."""
+    
+    explore_acquisition_function: Callable = random_selection
+    """An explore-stage acqusition function that can e.g., weight
+    property uncertainty vs. constraints to improve model performance
+    or simply explore the space.
+    """
+
+    acquisition_function: Callable = extremise_expected_value
+    """An exploit-stage acqusition function that defines the desired
+    screening wrt. final constraints and optimisation targets.
+    """
+    
+    epochs: list[dict] = []
+    """A container that stores the epochs that have already been run."""
+    
+    _campaign_uuid: str | None = None
+    """A UUID that uniquely identifies this campaign."""
+
+
     def __post_init__(self):
         self.logistics = CampaignLogistics(**self.logistics)
         self.learning_strategy = LearningStrategy(**self.learning_strategy)
+        if not self._campaign_uuid:
+            import uuid
+            self._campaign_uuid = uuid.uuid4()
 
     @staticmethod
     def load_checkpoint(fname: os.PathLike) -> "Campaign":
@@ -141,8 +156,17 @@ class Campaign:
                 map[p] = oracle_desc[1]
         return map
 
-    def dump_checkpoint(self, fname: os.PathLike) -> None:
+    def dump_checkpoint(self, fname: os.PathLike | None = None) -> None:
         import pickle
+        from pathlib import Path
+
+        if fname is None:
+            fname = f"campaign_checkpoint-{self._campaign_uuid}-{len(self.epochs)}.pkl"
+    
+        i = 0
+        while Path(fname).exists():
+            fname = fname.replace(".pkl", f"-{i}.pkl")
+            i += 1
 
         with open(fname, "wb") as f:
             pickle.dump(self, f)
@@ -160,7 +184,7 @@ class Campaign:
                 continue
             if self.drop_initial_cols and property in self.drop_initial_cols:
                 print(f"Dropping {property}")
-                for ind, d in enumerate(dataset.data):
+                for ind, _ in enumerate(dataset.data):
                     dataset.data[ind]["attributes"].pop(property_name_in_dataset)
 
             property_counts[property] = sum(
@@ -218,6 +242,58 @@ class Campaign:
 
         return model
 
+    def run_epoch(self):
+
+        dataset_counter = 0
+        candidates = self.select(self.datasets[dataset_counter])
+        workflows = {}
+    
+        for candidate in candidates:
+            workflows[candidate.id] = {}
+            for prop, oracle in self.oracles:
+                workflows[candidate.id][prop] = oracle.make(candidate)
+
+        epoch = {"candidates": candidates, "workflows": workflows, "dataset_counter": dataset_counter}
+        self.epochs.append(epoch)
+
+        for candidate in candidates:
+            for prop, oracle in self.oracles:
+                self.evaluate_workflow(workflows[candidate.id][prop])
+        
+        # get the property values out of the workflow
+        for candidate in candidates:
+            for prop, oracle in self.oracles:
+                candidate[prop] = workflows[candidate.id][prop].output
+        
+        epoch["computed_candidates"] = candidates
+        self.epochs[-1].update(epoch)
+
+        # Update the dataset(s) with an inefficient loop for now
+        candidate_ids = {candidate.id for candidate in candidates}
+        for ind, d in enumerate(self.datasets[dataset_counter]):
+            if d.id in candidate_ids:
+                self.datasets[dataset_counter][ind].update(candidate)
+
+        # Then potentially retrain the model
+        self.dump_checkpoint()
+
+
+
+    def evaluate_workflow(self, workflow: Flow):
+        if self.logistics.local:
+            run_locally(workflow)
+
+    def select(self, dataset):
+        """Select the next structures to evaluate."""
+        if self.exploit_explore_heuristic():
+            selector = self.explore_acquisition_function
+        else:
+            selector = self.explore_acquisition_function
+
+        return selector([d for d in dataset if d.get(property) is None], dataset, num_to_select=self.learning_strategy.min_increment)
+
     def run(self):
         dataset, property_counts = self.load_initial_dataset()
-        self.prepare_model_training(dataset, property_counts)
+
+        if self.initial_model is None:
+            self.prepare_model_training(dataset, property_counts)
