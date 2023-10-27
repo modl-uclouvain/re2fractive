@@ -3,10 +3,11 @@
 from optimade.adapters import Structure
 import random
 
+
 def random_selection(
-    candidate_pool: list[Structure], 
-    decorated_structures: list[Structure], 
-    num_to_select: int = 1
+    candidate_pool: list[Structure],
+    decorated_structures: list[Structure],
+    num_to_select: int = 1,
 ) -> list[Structure]:
     """Returns `num_to_select` random structures from the candidate pool.
 
@@ -23,12 +24,13 @@ def random_selection(
     """
     return random.sample(candidate_pool, num_to_select)
 
+
 def extremise_expected_value(
-    candidate_pool: list[Structure], 
-    decorated_structures: list[Structure], 
-    property: str, 
+    candidate_pool: list[Structure],
+    decorated_structures: list[Structure],
+    property: str,
     num_to_select: int = 1,
-    order = "max",
+    order="max",
 ):
     """Returns the top `num_to_select` structures according to the maximum/minimum feasible value of `property`, accounting
     for uncertainty if available.
@@ -56,4 +58,9 @@ def extremise_expected_value(
         reverse = True
         sign = 1
 
-    return sorted(candidate_pool, key=lambda s: s[property] + sign * s.get(f"{property}_std", 0.0), reverse=reverse)[:num_to_select]
+    return sorted(
+        candidate_pool,
+        key=lambda s: s["predictions"][property]
+        + sign * s["predictions"].get(f"{property}_std", 0.0),
+        reverse=reverse,
+    )[:num_to_select]

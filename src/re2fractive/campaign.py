@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
-import pandas as pd
 import os
-import random
 from jobflow_remote.jobs.state import JobState
 from modnet.models import MODNetModel
 from jobflow import Maker, Job, Flow, run_locally
@@ -9,30 +7,11 @@ from typing import Annotated, Callable, TypeAlias
 from optimade.adapters import Structure as OptimadeStructure
 from jobflow_remote import JobController, submit_flow
 from re2fractive.selection import extremise_expected_value, random_selection
-
-
-@dataclass
-class Stage:
-    """A stage in the campaign that need only be run once."""
-
-    factory: Job | Flow
-    uuid: str | None = None
-
-    @property
-    def status(self) -> JobState:
-        """Return the status of the stage."""
-        return (
-            JobController()
-            .get_job_info(
-                job_id=self.uuid,
-            )
-            .state
-        )
+from re2fractive.datasets import Dataset
 
 
 @dataclass
 class OptimadeQuery:
-
     filter: str
     """The OPTIMADE filter to be used to query the databases."""
 
@@ -44,16 +23,6 @@ class OptimadeQuery:
 
 
 @dataclass
-class Dataset:
-
-    data: list[OptimadeStructure]
-    """A list of OPTIMADE structures, decorated with target properties, where available."""
-
-    properties: dict[str, str]
-    """A dictionary mapping from a property name to the column name in the dataset."""
-
-
-@dataclass
 class CampaignLogistics:
     local: bool
     jfr_project: str | None
@@ -62,7 +31,6 @@ class CampaignLogistics:
 
 @dataclass
 class LearningStrategy:
-
     min_data_points: int = field(default=100)
     """The minimum number of data points required before training a model."""
 
@@ -77,7 +45,6 @@ Oracle: TypeAlias = Callable | Maker
 
 @dataclass
 class Campaign:
-
     oracles: list[tuple[list[str], Oracle]]
     """A list of oracles that can be evaluated to obtain the 'ground truth', and
     the associated properites they can compute.
@@ -114,7 +81,7 @@ class Campaign:
 
     initial_model: MODNetModel | None = None
     """An initial model to use to generate the first round of predictions."""
-    
+
     explore_acquisition_function: Callable = random_selection
     """An explore-stage acqusition function that can e.g., weight
     property uncertainty vs. constraints to improve model performance
@@ -125,19 +92,19 @@ class Campaign:
     """An exploit-stage acqusition function that defines the desired
     screening wrt. final constraints and optimisation targets.
     """
-    
+
     epochs: list[dict] = []
     """A container that stores the epochs that have already been run."""
-    
+
     _campaign_uuid: str | None = None
     """A UUID that uniquely identifies this campaign."""
-
 
     def __post_init__(self):
         self.logistics = CampaignLogistics(**self.logistics)
         self.learning_strategy = LearningStrategy(**self.learning_strategy)
         if not self._campaign_uuid:
             import uuid
+
             self._campaign_uuid = uuid.uuid4()
 
     @staticmethod
@@ -162,7 +129,7 @@ class Campaign:
 
         if fname is None:
             fname = f"campaign_checkpoint-{self._campaign_uuid}-{len(self.epochs)}.pkl"
-    
+
         i = 0
         while Path(fname).exists():
             fname = fname.replace(".pkl", f"-{i}.pkl")
@@ -194,29 +161,29 @@ class Campaign:
 
         return dataset, property_counts
 
-    def prepare_model_training(self, dataset, property_counts):
+    # def prepare_model_training(self, dataset, property_counts):
 
-        for p in property_counts:
-            if property_counts[p] < self.learning_strategy.min_data_points:
-                if p not in self.oracle_property_map:
-                    print(
-                        f"Cannot get more values for property {p}, no avaialble oracle from {self.oracle_property_map=}"
-                    )
-                elif self.learning_strategy.min_data_points > len(dataset.data):
-                    print(
-                        f"Dataset {dataset=} not large enough to train model with strategy {self.learning_strategy.min_data_points=}"
-                    )
-                else:
-                    # start by randomly computing some values
-                    # in reality these should be saved in a database
-                    for ind, d in enumerate(dataset.data):
-                        if d["attributes"].get(dataset.properties[p]) is not None:
-                            continue
-                        oracle = self.oracle_property_map[p]
-                        print(f"Computing {p} for {d['id']}")
-                        dataset.data[ind]["attributes"][dataset.properties[p]] = oracle(
-                            d
-                        )[p]
+    #     for p in property_counts:
+    #         if property_counts[p] < self.learning_strategy.min_data_points:
+    #             if p not in self.oracle_property_map:
+    #                 print(
+    #                     f"Cannot get more values for property {p}, no avaialble oracle from {self.oracle_property_map=}"
+    #                 )
+    #             elif self.learning_strategy.min_data_points > len(dataset.data):
+    #                 print(
+    #                     f"Dataset {dataset=} not large enough to train model with strategy {self.learning_strategy.min_data_points=}"
+    #                 )
+    #             else:
+    #                 # start by randomly computing some values
+    #                 # in reality these should be saved in a database
+    #                 for ind, d in enumerate(dataset.data):
+    #                     if d["attributes"].get(dataset.properties[p]) is not None:
+    #                         continue
+    #                     oracle = self.oracle_property_map[p]
+    #                     print(f"Computing {p} for {d['id']}")
+    #                     dataset.data[ind]["attributes"][dataset.properties[p]] = oracle(
+    #                         d
+    #                     )[p]
 
     def train_initial_model(self, dataset):
         """Train an initial model on the initial dataset."""
@@ -243,28 +210,34 @@ class Campaign:
         return model
 
     def run_epoch(self):
-
         dataset_counter = 0
+        model = self.models[-1]
+
+        self.predict(model, self.datasets[dataset_counter])
         candidates = self.select(self.datasets[dataset_counter])
         workflows = {}
-    
+
         for candidate in candidates:
             workflows[candidate.id] = {}
             for prop, oracle in self.oracles:
                 workflows[candidate.id][prop] = oracle.make(candidate)
 
-        epoch = {"candidates": candidates, "workflows": workflows, "dataset_counter": dataset_counter}
+        epoch = {
+            "candidates": candidates,
+            "workflows": workflows,
+            "dataset_counter": dataset_counter,
+        }
         self.epochs.append(epoch)
 
         for candidate in candidates:
             for prop, oracle in self.oracles:
                 self.evaluate_workflow(workflows[candidate.id][prop])
-        
+
         # get the property values out of the workflow
         for candidate in candidates:
             for prop, oracle in self.oracles:
                 candidate[prop] = workflows[candidate.id][prop].output
-        
+
         epoch["computed_candidates"] = candidates
         self.epochs[-1].update(epoch)
 
@@ -277,8 +250,6 @@ class Campaign:
         # Then potentially retrain the model
         self.dump_checkpoint()
 
-
-
     def evaluate_workflow(self, workflow: Flow):
         if self.logistics.local:
             run_locally(workflow)
@@ -290,10 +261,24 @@ class Campaign:
         else:
             selector = self.explore_acquisition_function
 
-        return selector([d for d in dataset if d.get(property) is None], dataset, num_to_select=self.learning_strategy.min_increment)
+        return selector(
+            [d for d in dataset if d.get(property) is None],
+            dataset,
+            num_to_select=self.learning_strategy.min_increment,
+        )
 
-    def run(self):
+    def predict(self, model: MODNetModel, candidates: list[OptimadeStructure]):
+        """Massage dataset into format for the model and run prediction step."""
+        import pandas as pd
+
+        df_featurized = pd.DataFrame([d.attributes for d in candidates])
+        return model.predict(df_featurized)
+
+    def run_setup(self):
         dataset, property_counts = self.load_initial_dataset()
 
         if self.initial_model is None:
-            self.prepare_model_training(dataset, property_counts)
+            raise RuntimeError("No initial model provided")
+            # self.models.append(self.prepare_model_training(dataset, property_counts))
+
+        self.models.append(self.initial_model)
