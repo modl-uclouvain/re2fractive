@@ -11,15 +11,16 @@ MODNet will be used as the framework for prediction.
 
 """
 
-from typing import Iterable
+from collections.abc import Iterable
 from pathlib import Path
-import pandas as pd
-from re2fractive.campaign import Campaign
-from re2fractive.datasets import NaccaratoDataset, MP2023Dataset
 
+import pandas as pd
 from atomate2.vasp.jobs.core import DielectricMaker
 from modnet.models import EnsembleMODNetModel
 from pymatgen.core import Structure
+
+from re2fractive.campaign import Campaign
+from re2fractive.datasets import MP2023Dataset, NaccaratoDataset
 
 
 class ModifiedDielectricMaker(DielectricMaker):
@@ -71,9 +72,9 @@ def lookup_refractive_index_oracle(s):
 if __name__ == "__main__":
     re2fractive = Campaign(
         properties=["refractive_index", "band_gap", "hull_distance"],
-        oracles=[(["refractive_index"], lookup_refractive_index_oracle)],
-        datasets=[NaccaratoDataset, MP2023Dataset],
-        model=EnsembleMODNetModel,
+        oracles=[(("refractive_index",), lookup_refractive_index_oracle)],
+        datasets=[NaccaratoDataset(), MP2023Dataset()],
+        model_cls=EnsembleMODNetModel,
         initial_model=EnsembleMODNetModel.load(
             str(
                 Path(__file__).parent.parent.parent
@@ -84,8 +85,8 @@ if __name__ == "__main__":
             "local": False,
             "jfr_project": "re2fractive",
             "jfr_preferred_worker": "lumi",
-        },
-        learning_strategy={"min_data_points": 100, "min_increment": 5},
+        },  # type: ignore[arg-type]
+        learning_strategy={"min_data_points": 100, "min_increment": 5},  # type: ignore[arg-type]
         drop_initial_cols=["refractive_index"],
     )
 
