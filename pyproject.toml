@@ -12,16 +12,13 @@ dependencies = [
     "atomate2",
     "modnet",
     "jobflow",
+    "optimade[http-client] @ git+https://github.com/Materials-Consortia/optimade-python-tools.git",
 ]
 
 [project.optional-dependencies]
 tests = [
     "pytest~=7.2",
     "pytest-cov~=4.0",
-]
-
-optional = [
-    "optimade[http_client]",  # make optimade optional for now until pydantic 2 support is added
 ]
 
 dev = [
