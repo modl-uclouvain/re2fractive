@@ -5,7 +5,9 @@ import pytest
 def trial_dataset():
     from re2fractive.datasets import NaccaratoDataset
 
-    return NaccaratoDataset()
+    dataset = NaccaratoDataset()
+    dataset.load()
+    return dataset
 
 
 @pytest.fixture
