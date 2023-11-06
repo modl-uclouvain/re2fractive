@@ -1,7 +1,8 @@
 """A place to collect acquisition functions."""
 
-from optimade.adapters import Structure
 import random
+
+from optimade.adapters import Structure
 
 
 def random_selection(

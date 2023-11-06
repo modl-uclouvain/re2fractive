@@ -10,8 +10,8 @@ def trial_dataset():
 
 @pytest.fixture
 def trial_dataset_split(trial_dataset):
-    import random
     import copy
+    import random
 
     random.seed(42)
     train_set = copy.copy(trial_dataset)

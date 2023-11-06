@@ -1,10 +1,10 @@
-from dataclasses import dataclass
-from optimade.adapters.structures import Structure as OptimadeStructure
+import abc
 from pathlib import Path
 
+from optimade.adapters.structures import Structure as OptimadeStructure
 
-@dataclass
-class Dataset:
+
+class Dataset(abc.ABC):
     """The Dataset object provides a container for OPTIMADE structures
     that are decorated with the same set of properties.
 
@@ -22,11 +22,17 @@ class Dataset:
     def __len__(self):
         return len(self.data)
 
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def load(self):
+        raise NotImplementedError
+
 
 class MP2023Dataset(Dataset):
     properties = {"hull_distance": "_mp_energy_above_hull", "band_gap": "_mp_band_gap"}
 
-    def __init__(self):
+    def load(self):
         import json
 
         with open(
@@ -37,10 +43,11 @@ class MP2023Dataset(Dataset):
 
         self.data = structures
 
-    def __post_init__(self):
         for ind, _ in enumerate(self.data):
             for key, column in self.properties.items():
-                self.data[ind]["attributes"][key] = self.data[ind]["attributes"].get(column)
+                self.data[ind]["attributes"][key] = self.data[ind]["attributes"].get(
+                    column
+                )
 
         self.data = [OptimadeStructure(s) for s in self.data]
 
@@ -52,7 +59,7 @@ class NaccaratoDataset(Dataset):
         "hull_distance": "_mp_energy_above_hull",
     }
 
-    def __init__(self):
+    def load(self):
         import json
 
         with open(
