@@ -1,0 +1,20 @@
+Batch
+
+re2fractive_v1 --> Time Limit (TL) 10h, 128 cores, 3850 Mb/core
+    total 17 WFs
+    COMPLETED 7
+    FIZZLED 6
+        --> 4 for unknown reason (I think out-of-memory) --> mp-21872, -755574, -1209937, -3792
+        --> 2 because W_sv psp not found... (Why search for W_sv although there are other W psp?...) --> mp-1029938, -2243
+    RUNNING 4
+        --> 2 TL --> mp-14132, -1029845
+        --> 2 TL --> vasp_gam --> TL --> mp-1197527 (236 sites), -1221381 (78 sites (156 conventional))
+
+re2fractive_v2 --> relaunched v1 with Time Limit (TL) 16h, 128 cores, 3850 Mb/core, LREAL Auto, relax
+    total 17 WFs
+    COMPLETED 9
+    FIZZLED 6
+        --> 4 for unknown reason (I think out-of-memory) --> mp-21872, -755574, -1209937, -3792
+        --> 2 because W_sv psp not found... (Why search for W_sv although there are other W psp?...) --> mp-1029938, -2243
+    RUNNING 2
+        --> 2 TL --> vasp_gam --> TL --> mp-1197527 (236 sites), -1221381 (78 sites (156 conventional))
