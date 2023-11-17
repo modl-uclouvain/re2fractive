@@ -58,8 +58,8 @@ for mpid, struc in zip(mpids,structures):
     dielec_flow = DielectricMaker().make(structure=structure)
     
     # Power ups
-        # Increase the kpoints density to 3000 per reciprocal atom for balance accuracy/complexity
-    dielec_flow = update_user_kpoints_settings( dielec_flow, {"grid_density": 3000})
+        # Increase the kpoints density to (3000 for v1, 1000 for v2) per reciprocal atom for balance accuracy/complexity
+    dielec_flow = update_user_kpoints_settings( dielec_flow, {"grid_density": 1000})
     
         # Specify:  the parallelization to optimize performance
         #           the electronic convergence criterion            (1E-5 eV otherwise by default),
@@ -70,7 +70,7 @@ for mpid, struc in zip(mpids,structures):
     dielec_flow = update_user_potcar_functional(dielec_flow, "PBE_54")
     
     # Let's add a metadata to recover it easily from the MongoDb afterwards with {"spec._tasks.job.metadata.Label": "HSE_Etot(x)"}
-    dielec_flow.update_metadata({"Batch": "re2fractive_v1", "mp-id": f"{mpid}"})
+    dielec_flow.update_metadata({"Batch": "re2fractive_v2_lm3", "mp-id": f"{mpid}"})
     
     # convert the flow to a fireworks WorkFlow object
     wf = flow_to_workflow(dielec_flow)
