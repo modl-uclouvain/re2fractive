@@ -11,24 +11,34 @@ requires-python = ">=3.10"
 dependencies = [
     "atomate2",
     "modnet",
-    "jobflow-remote @ git+ssh://git@github.com/matgenix/jobflow-remote",
-    "optimade[http_client]",
+    "jobflow",
+    "optimade[http-client] @ git+https://github.com/Materials-Consortia/optimade-python-tools.git",
+]
+
+[project.optional-dependencies]
+tests = [
+    "pytest~=7.2",
+    "pytest-cov~=4.0",
+]
+
+dev = [
+    "ruff",
+    "mypy",
+    "pre-commit",
 ]
 
 
 [tool.mypy]
 ignore_missing_imports = true
 follow_imports = "skip"
+check_untyped_defs = true
 
 [tool.ruff]
 select = ["E", "F", "I", "W", "Q"]
 ignore = ["E501", "E402"]
 fixable = ["A", "B", "C", "D", "E", "F", "I"]
 unfixable = []
-extend-exclude = [
-    "providers",
-]
-target-version = "py311"
+target-version = "py310"
 per-file-ignores = {}
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
