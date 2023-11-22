@@ -70,6 +70,6 @@ class NaccaratoDataset(Dataset):
 
         self.data = [OptimadeStructure(structures[s]).entry.dict() for s in structures]
 
-        # fill in values for hull distance; if its in the MP then its low enough for us for now
+        # fill in values for hull distance; if it's in the MP then it's low enough for us for now
         for ind, _ in enumerate(self.data):
             self.data[ind]["attributes"]["_mp_energy_above_hull"] = 0
