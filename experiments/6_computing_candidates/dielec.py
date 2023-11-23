@@ -60,13 +60,8 @@ for mpid, struc in zip(mpids,structures):
     dielec_flow = DielectricMaker().make(structure=structure)
     
     # Power ups
-<<<<<<< HEAD
-    # Increase the kpoints density to 3000 per reciprocal atom for balance accuracy/complexity
-    dielec_job = update_user_kpoints_settings( dielec_job, {"grid_density": 3000})
-=======
-        # Increase the kpoints density to (3000 for v1, 1000 for v2) per reciprocal atom for balance accuracy/complexity
+    # Increase the kpoints density to (3000 for v1, 1000 for v2) per reciprocal atom for balance accuracy/complexity
     dielec_flow = update_user_kpoints_settings( dielec_flow, {"grid_density": 1000})
->>>>>>> 55a4c97 (Some acquisition functions + v4 dielectric calculation v1 candidates)
     
     # Let's add a metadata to recover it easily from the MongoDb afterwards with {"spec._tasks.job.metadata.Label": "HSE_Etot(x)"}
     dielec_flow.update_metadata({"Batch": "re2fractive_v4_lm3", "mp-id": f"{mpid}"})
@@ -88,17 +83,10 @@ for mpid, struc in zip(mpids,structures):
     
         # Choose the type of PSP, here PBE_54
     dielec_flow = update_user_potcar_functional(dielec_flow, "PBE_54")
-<<<<<<< HEAD
-    
-    # Let's add a metadata to recover it easily from the MongoDb afterwards with {"spec._tasks.job.metadata.Label": "HSE_Etot(x)"}
-    dielec_flow.update_metadata({"Batch": "re2fractive_v2_lm3", "mp-id": f"{mpid}"})
-    
-=======
+
     # Let's add a metadata to recover it easily from the MongoDb afterwards with {"spec._tasks.job.metadata.Label": "HSE_Etot(x)"}
     dielec_flow.update_metadata({"Batch": "re2fractive_v4_lm3", "mp-id": f"{mpid}"})
 
-
->>>>>>> 55a4c97 (Some acquisition functions + v4 dielectric calculation v1 candidates)
     # convert the flow to a fireworks WorkFlow object
     wf = flow_to_workflow(dielec_flow)
     
