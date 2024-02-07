@@ -58,3 +58,10 @@ venv/
 ENV/
 .matplotlibrc
 matplotlibrc
+
+# data
+
+*pkl
+*mdd*
+*mod.*
+*json*
