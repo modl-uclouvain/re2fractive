@@ -1,0 +1,5 @@
+random selection
+number selected = 100
+
+copy:
+    rsync -azvr --exclude 'model*pkl' mbk:/globalscratch/ucl/modl/vtrinque/NLO/HT/ref_idx/re2fractive/artificial/00 .

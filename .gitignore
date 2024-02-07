@@ -61,7 +61,7 @@ matplotlibrc
 
 # data
 
-*pkl
+*pkl*
 *mdd*
 *mod.*
 *json*

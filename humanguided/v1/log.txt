@@ -1,0 +1,11 @@
+{"spec.Batch": "re2fractive_hg_v1_bisbis", state: "FIZZLED"}
+
+
+FIZZLED
+
+	mp-1283030	->	SCF unconverged (increase NELM (200 now) or change ALGO)
+	mp-4891		-> 	response too big
+	mp-680205	-> 	weird error (decrease AMIN to 0.01 (0.1 now) and put NPAR 16 and changing ALGO to Normal e.g.)
+	mp-1018809	->	same
+	mp-675406	->	same
+	
