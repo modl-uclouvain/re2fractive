@@ -1,0 +1,2 @@
+- This folder contains the humand-guided active learning cycles based on the fully featurized Materials Project resulting from the "experiments" folder.
+- Different acquisition functions will be tested in different subfolders of the "acquisition" directory.

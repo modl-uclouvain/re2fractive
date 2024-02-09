@@ -1,0 +1,5 @@
+start_set = 200 random
+random selection
+number selected = 100
+
+rsync -azvr --exclude 'model*pkl' mbk:/globalscratch/ucl/modl/vtrinque/NLO/HT/ref_idx/re2fractive/artificial/00 00_rand_s200n100
