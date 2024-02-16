@@ -1,1 +1,3 @@
-optimade[http-client]~=1.0
+optimade[http-client]<1.0
+modnet
+pymatgen==2023.9.2
