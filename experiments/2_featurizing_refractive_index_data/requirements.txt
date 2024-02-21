@@ -1,2 +1,5 @@
 modnet==0.2.1
-optimade
+optimade~=0.25
+matminer==0.8.0
+pymatgen==2023.9.2
+ruamel.yaml<0.18
