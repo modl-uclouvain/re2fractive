@@ -15,7 +15,7 @@ import numpy as np
 
 data_path = Path(__file__).parent.parent / "data"
 db_path = data_path / "db.csv"
-structures_path = data_path / "structures.json"
+structures_path = data_path / "structures-2024.json"
 
 if not db_path.exists():
     import urllib.request
@@ -42,6 +42,9 @@ for ind, row in tqdm.tqdm(df.iterrows(), total=len(df)):
         continue
 
     filter_ = f'id = "{mp_id}"'
+    structure = {}
+    structure["attributes"] = {}
+
 
     try:
         # redirect output from stdout to dev null
@@ -51,6 +54,12 @@ for ind, row in tqdm.tqdm(df.iterrows(), total=len(df)):
             ]["data"][0]
     except Exception:
         print(f"No structure found for {mp_id}")
+        continue
+
+    if structure["id"]  != mp_id:
+        print(f"Structure ID {structure['id']} does not match MP ID {mp_id}")
+        continue
+
     structure["attributes"]["_naccarato_refractive_index"] = np.mean(
         [
             row["Ref_index (1)"],
