@@ -1,12 +1,16 @@
 import os
-import string
 import random
-import numpy as np
-from sklearn.model_selection import KFold
+import string
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import modnet.featurizers
+import numpy as np
+from modnet.hyper_opt import FitGenetic
+from sklearn.model_selection import KFold
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 
 class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
     """A set of efficient featurizers for features implemented in matminer
@@ -44,81 +48,28 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
 
     def load_featurizers(self):
         with contextlib.redirect_stdout(None):
-            from pymatgen.analysis.local_env import VoronoiNN
-            from matminer.featurizers.composition import (
-                AtomicOrbitals,
-                # AtomicPackingEfficiency,  # Slow
-                BandCenter,
-                CationProperty,
-                ElectronAffinity,
-                ElectronegativityDiff,
-                ElementFraction,
-                ElementProperty,
-                IonProperty,
-                # Meredig,  # Included in others
-                # Miedema,
-                OxidationStates,
-                Stoichiometry,
-                TMetalFraction,
-                ValenceOrbital,
-                WenAlloys,
-                # YangSolidSolution,  # Included in WenAlloys
-            )
-            from matminer.featurizers.structure import (
-                # BagofBonds,  # Leads to >24 000 features
-                # BondFractions, # Slow
-                # ChemicalOrdering,  # Slow
-                # CoulombMatrix,  # Redundant with SineCoulombMatrix, which is better for periodic systems
-                DensityFeatures,
-                # Dimensionality,
-                ElectronicRadialDistributionFunction,
-                EwaldEnergy,
-                # GlobalInstabilityIndex,  # Still experimental?
-                GlobalSymmetryFeatures,
-                # JarvisCFID,
-                # MaximumPackingEfficiency,
-                # MinimumRelativeDistances,
-                # OrbitalFieldMatrix,  # Buggy
-                # PartialRadialDistributionFunction,  # Leads to >198 000 features
-                # RadialDistributionFunction,  # Slow
-                # SineCoulombMatrix,
-                # SiteStatsFingerprint,  # Done in featurizers.py
-                StructuralComplexity,
-                # StructuralHeterogeneity,  # Slow
-                # XRDPowderPattern,
-            )
-
-            from matminer.featurizers.site import (
-                AGNIFingerprints,
-                # AngularFourierSeries,  # Redundant with GaussianSymmFunc
-                AverageBondAngle,
-                AverageBondLength,
-                BondOrientationalParameter,
-                ChemEnvSiteFingerprint,
-                # ChemicalSRO,  # Buggy
-                CoordinationNumber,
-                CrystalNNFingerprint,
-                EwaldSiteEnergy,
-                GaussianSymmFunc,
-                GeneralizedRadialDistributionFunction,
-                IntersticeDistribution,
-                LocalPropertyDifference,
-                OPSiteFingerprint,
-                # SiteElementalProperty,  # Already included in composition featurizers
-                # SOAP, # Leads to >260 000 features...
-                VoronoiFingerprint,
-            )
-
+            from matminer.featurizers.composition import (  # AtomicPackingEfficiency,  # Slow; Meredig,  # Included in others; Miedema,; YangSolidSolution,  # Included in WenAlloys
+                AtomicOrbitals, BandCenter, CationProperty, ElectronAffinity,
+                ElectronegativityDiff, ElementFraction, ElementProperty,
+                IonProperty, OxidationStates, Stoichiometry, TMetalFraction,
+                ValenceOrbital, WenAlloys)
+            from matminer.featurizers.site import (  # AngularFourierSeries,  # Redundant with GaussianSymmFunc; ChemicalSRO,  # Buggy; SiteElementalProperty,  # Already included in composition featurizers; SOAP, # Leads to >260 000 features...
+                AGNIFingerprints, AverageBondAngle, AverageBondLength,
+                BondOrientationalParameter, ChemEnvSiteFingerprint,
+                CoordinationNumber, CrystalNNFingerprint, EwaldSiteEnergy,
+                GaussianSymmFunc, GeneralizedRadialDistributionFunction,
+                IntersticeDistribution, LocalPropertyDifference,
+                OPSiteFingerprint, VoronoiFingerprint)
+            from matminer.featurizers.structure import (  # BagofBonds,  # Leads to >24 000 features; BondFractions, # Slow; ChemicalOrdering,  # Slow; CoulombMatrix,  # Redundant with SineCoulombMatrix, which is better for periodic systems; Dimensionality,; GlobalInstabilityIndex,  # Still experimental?; JarvisCFID,; MaximumPackingEfficiency,; MinimumRelativeDistances,; OrbitalFieldMatrix,  # Buggy; PartialRadialDistributionFunction,  # Leads to >198 000 features; RadialDistributionFunction,  # Slow; SineCoulombMatrix,; SiteStatsFingerprint,  # Done in featurizers.py; StructuralHeterogeneity,  # Slow; XRDPowderPattern,
+                DensityFeatures, ElectronicRadialDistributionFunction,
+                EwaldEnergy, GlobalSymmetryFeatures, StructuralComplexity)
             # Get additional ElementProperty featurizer, but
             # get only the features that are not yet present with another featurizer.
             # For this reason, we cannot rely on the Matminer presets for those.
             # Also in the case of continuous features, use only the mean and avg_dev for the statistics.
-            from matminer.utils.data import (
-                PymatgenData,
-                DemlData,
-                # MatscholarElementData,
-                # MEGNetElementData,
-            )
+            from matminer.utils.data import (  # MatscholarElementData,; MEGNetElementData,
+                DemlData, PymatgenData)
+            from pymatgen.analysis.local_env import VoronoiNN
 
             pymatgen_features = [
                 "block",
@@ -256,23 +207,23 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
             # self.structure_featurizers[6].desired_features = None
 
             self.site_featurizers = (
-                #AGNIFingerprints(),
+                # AGNIFingerprints(),
                 ## AngularFourierSeries.from_preset("gaussian"), # Redundant with GaussianSymmFunc
-                #AverageBondAngle(VoronoiNN()),
-                #AverageBondLength(VoronoiNN()),
-                #BondOrientationalParameter(),
-                #ChemEnvSiteFingerprint.from_preset("simple"),
+                # AverageBondAngle(VoronoiNN()),
+                # AverageBondLength(VoronoiNN()),
+                # BondOrientationalParameter(),
+                # ChemEnvSiteFingerprint.from_preset("simple"),
                 ## ChemicalSRO.from_preset("VoronoiNN"),  # Buggy
-                #CoordinationNumber(),
-                #CrystalNNFingerprint.from_preset("ops"),
-                #EwaldSiteEnergy(),
-                #GaussianSymmFunc(),
-                #GeneralizedRadialDistributionFunction.from_preset("gaussian"),
-                #IntersticeDistribution(),
-                #LocalPropertyDifference(),
-                #OPSiteFingerprint(),
+                # CoordinationNumber(),
+                # CrystalNNFingerprint.from_preset("ops"),
+                # EwaldSiteEnergy(),
+                # GaussianSymmFunc(),
+                # GeneralizedRadialDistributionFunction.from_preset("gaussian"),
+                # IntersticeDistribution(),
+                # LocalPropertyDifference(),
+                # OPSiteFingerprint(),
                 ## SOAP.from_preset("formation_energy"),  # Leads to >260 000 features...
-                #VoronoiFingerprint(),
+                # VoronoiFingerprint(),
             )
 
     def featurize_composition(self, df):
@@ -387,8 +338,14 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
 
 if __name__ == "__main__":
     import tensorflow as tf
+
     targets = ["refractive_index"]
-    experiment_name = "baseline_kfold_ensemble-" + "-".join(targets) + "-" + "".join(random.choice(string.ascii_lowercase) for _ in range(5))
+    experiment_name = (
+        "baseline_kfold_ensemble-"
+        + "-".join(targets)
+        + "-"
+        + "".join(random.choice(string.ascii_lowercase) for _ in range(5))
+    )
 
     gpus = tf.config.list_physical_devices("GPU")
     gpus = None
@@ -408,45 +365,47 @@ if __name__ == "__main__":
 
     data: MODData = MODData.load("mod-feature-selected-fast.data")
 
-# scrub now missing features
+    # scrub now missing features
     bad_features = [
-        'AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010',
-        'ElectronegativityDiff|maximum EN difference',
-        'ElectronegativityDiff|mean EN difference',
-        'AtomicPackingEfficiency|dist from 3 clusters |APE| < 0.010',
-        'AtomicPackingEfficiency|mean simul. packing efficiency',
-        'ElectronegativityDiff|range EN difference',
-        'ElectronegativityDiff|minimum EN difference'
+        "AtomicPackingEfficiency|dist from 1 clusters |APE| < 0.010",
+        "ElectronegativityDiff|maximum EN difference",
+        "ElectronegativityDiff|mean EN difference",
+        "AtomicPackingEfficiency|dist from 3 clusters |APE| < 0.010",
+        "AtomicPackingEfficiency|mean simul. packing efficiency",
+        "ElectronegativityDiff|range EN difference",
+        "ElectronegativityDiff|minimum EN difference",
     ]
-    data.optimal_features = [col for col in data.optimal_features if col not in bad_features]
+    data.optimal_features = [
+        col for col in data.optimal_features if col not in bad_features
+    ]
     for k in data.optimal_features_by_target:
-        data.optimal_features_by_target[k] = [col for col in data.optimal_features_by_target[k] if col not in bad_features]
+        data.optimal_features_by_target[k] = [
+            col for col in data.optimal_features_by_target[k] if col not in bad_features
+        ]
+
+    md_naccarato = data
 
     kf = KFold(5, shuffle=True, random_state=42)
     scores = []
-
     for ind, (train, test) in enumerate(
-        kf.split(data.df_featurized, y=data.df_targets)
+        kf.split(md_naccarato.df_featurized, y=md_naccarato.df_targets)
     ):
-        train_moddata, test_moddata = data.split((train, test))
-        model_path = (
-            Path(__file__).parent / "models" / f"{experiment_name}_{ind}.pkl"
-        )
+        train_moddata, test_moddata = md_naccarato.split((train, test))
+        model_path = Path(".") / "models" / "genetic" / f"{experiment_name}_{ind}.pkl"
+        print(model_path)
         if model_path.exists():
             model = EnsembleMODNetModel.load(model_path)
 
         else:
-            model = EnsembleMODNetModel(
-                targets=[[["refractive_index"]]],
-                weights={"refractive_index": 1.0},
-                num_neurons=([128], [64], [64], [16]),
-                n_feat=32,
-                n_models=100,
-            )
-
-            model.fit(
-                train_moddata,
+            ga = FitGenetic(train_moddata)
+            model = ga.run(
+                size_pop=20,  # dflt
+                num_generations=10,  # dflt
+                nested=0,  # dflt = 5
                 n_jobs=12,
+                early_stopping=4,  # dflt
+                refit=0,  # dflt = 5
+                fast=False,
             )
             model.save(model_path)
 
@@ -464,20 +423,20 @@ if __name__ == "__main__":
                 ls="none",
             )
 
-    print("="*10 + f" {experiment_name} " + "="*10)
+    print("=" * 10 + f" {experiment_name} " + "=" * 10)
     print("Training complete.")
     print("Training complete.")
     print(f"Accuracy: {np.mean(scores):.3f}±{np.std(scores):.3f}")
 
     plt.plot(
         np.linspace(
-            np.min(data.df_targets.values),
-            np.max(data.df_targets.values),
+            np.min(md_naccarato.df_targets.values),
+            np.max(md_naccarato.df_targets.values),
             3,
         ),
         np.linspace(
-            np.min(data.df_targets.values),
-            np.max(data.df_targets.values),
+            np.min(md_naccarato.df_targets.values),
+            np.max(md_naccarato.df_targets.values),
             3,
         ),
         color="black",
@@ -486,4 +445,5 @@ if __name__ == "__main__":
 
     plt.ylabel("Predicted $n$ (dimensionless)")
     plt.xlabel("Computed $n$ (dimensionless)")
+    plt.title(f"{experiment_name} - MAE: {np.mean(scores):.3f}±{np.std(scores):.3f}")
     plt.savefig(Path(__file__).parent / "figs" / f"{experiment_name}.pdf")
