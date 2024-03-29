@@ -1,3 +1,5 @@
+campaigns/
+
 *.sublime-workspace
 *.sublime-project
 *.tmlanguage.cache
