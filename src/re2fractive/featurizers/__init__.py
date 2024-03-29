@@ -1,12 +1,55 @@
 import contextlib
+from pathlib import Path
 
 import modnet.featurizers
 import numpy as np
+import pandas as pd
 
 __all__ = ["MatminerFastFeaturizer"]
 
 
-class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
+class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
+    batch_size: int | None = 1000
+    batch_dir: str | None = None
+
+    def featurize(self, df):
+        """Featurizes a dataframe containing compositions, structures, and sites.
+
+        Parameters:
+            df: A dataframe containing the compositions, structures, and sites to be featurized.
+
+        Returns:
+            A dataframe containing the featurized data.
+
+        """
+        batch_size = self.batch_size
+        if batch_size is None:
+            return super().featurize(df)
+
+        batch_dir = self.batch_dir
+        if batch_dir is None:
+            batch_dir = "."
+
+        print(batch_dir)
+
+        batch_dfs = []
+        for ind in range(1 + (len(df) // batch_size)):
+            if Path(f"batch_{ind}.pkl").exists():
+                batch_dfs.append(pd.read_pickle(f"{batch_dir}/batch_{ind}.pkl"))
+                continue
+            batch_min = ind * batch_size
+            batch_max = min((ind + 1) * batch_size, len(df))
+            print(ind, batch_min, batch_max, len(df))
+            df_batch = df.iloc[batch_min:batch_max]
+            df_featurized_batch = super().featurize(df_batch)
+            df_featurized_batch.to_pickle(f"{batch_dir}/batch_{ind}.pkl")
+            batch_dfs.append(df_featurized_batch)
+
+        all_dfs = pd.concat(batch_dfs)
+        return modnet.featurizers.clean_df(all_dfs, drop_allnan=self.drop_allnan)
+
+
+class MatminerFastFeaturizer(BatchableMODFeaturizer):
     """A set of efficient featurizers for features implemented in matminer
     at time of creation (matminer v0.9.2 from 2024).
 
@@ -49,7 +92,6 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
                 Stoichiometry,
                 TMetalFraction,
                 ValenceOrbital,
-                WenAlloys,
             )
             from matminer.featurizers.structure import (
                 DensityFeatures,
@@ -110,7 +152,6 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
                 Stoichiometry(p_list=[2, 3, 5, 7, 10]),
                 TMetalFraction(),
                 ValenceOrbital(props=["frac"]),
-                WenAlloys(),
             )
 
             self.oxid_composition_featurizers = []
@@ -155,18 +196,6 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
             # Hopefully, I got them all...
             df.drop(
                 columns=[
-                    "WenAlloys|Yang omega",
-                    "WenAlloys|Yang delta",
-                    "WenAlloys|Radii gamma",
-                    "WenAlloys|Lambda entropy",
-                    "WenAlloys|APE mean",
-                    "WenAlloys|Interant electrons",
-                    "WenAlloys|Interant s electrons",
-                    "WenAlloys|Interant p electrons",
-                    "WenAlloys|Interant d electrons",
-                    "WenAlloys|Interant f electrons",
-                    "WenAlloys|Atomic weight mean",
-                    "WenAlloys|Total weight",
                     "ElementProperty|DemlData mean electric_pol",
                     "ElementProperty|DemlData mean FERE correction",
                     "ElementProperty|DemlData mean GGAU_Etot",
@@ -174,6 +203,7 @@ class MatminerFastFeaturizer(modnet.featurizers.MODFeaturizer):
                     "ElementProperty|DemlData mean mus_fere",
                 ],
                 inplace=True,
+                errors="ignore",
             )
 
             if self.oxid_composition_featurizers:
