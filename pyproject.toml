@@ -9,16 +9,20 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    "atomate2",
-    "modnet",
-    "jobflow",
-    "optimade[http-client] @ git+https://github.com/Materials-Consortia/optimade-python-tools.git",
+    "atomate2 == 0.0.14",
+    "modnet @ git+https://github.com/ppdebreuck/modnet@ml-evs/more-deps",  # replace with 0.4.2 when released
+    "optimade[http-client] == 1.0.4",
+    "matminer == 0.9.2",
+    "pymatgen == 2024.3.1",
+    "tensorflow ~= 2.11",
+    "jobflow == 0.1.17",
+    "tqdm",
 ]
 
 [project.optional-dependencies]
 tests = [
-    "pytest~=7.2",
-    "pytest-cov~=4.0",
+    "pytest ~= 8.0",
+    "pytest-cov ~= 4.0",
 ]
 
 dev = [
