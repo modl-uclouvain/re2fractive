@@ -1,7 +1,11 @@
 import numpy as np
+import pytest
 from re2fractive import CAMPAIGN_DIR, DATASETS_DIR
 
 
+@pytest.mark.skipif(
+    not CAMPAIGN_DIR.exists(), reason="Campaign directory does not exist"
+)
 def test_naccarato():
     from re2fractive.datasets import NaccaratoDataset
 
@@ -43,6 +47,9 @@ def test_naccarato():
     assert df.loc["mp-3444"]["chemical_formula_reduced"] == "ErO4Ta"
 
 
+@pytest.mark.skipif(
+    not CAMPAIGN_DIR.exists(), reason="Campaign directory does not exist"
+)
 def test_mp2023():
     from re2fractive.datasets import MP2023Dataset
 
