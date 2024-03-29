@@ -17,6 +17,7 @@ dependencies = [
     "tensorflow ~= 2.11",
     "jobflow == 0.1.17",
     "tqdm",
+    "mp-api",
 ]
 
 [project.optional-dependencies]
