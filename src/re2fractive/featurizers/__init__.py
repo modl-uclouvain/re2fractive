@@ -1,14 +1,17 @@
 import contextlib
-from pathlib import Path
 
 import modnet.featurizers
 import numpy as np
 import pandas as pd
 
+from re2fractive import SCRATCH_DIR
+
 __all__ = ["MatminerFastFeaturizer"]
 
 
 class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
+    """A MODNet featurizer runner that can be batched to avoid memory issues."""
+
     batch_size: int | None = 1000
     batch_dir: str | None = None
 
@@ -30,19 +33,21 @@ class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
         if batch_dir is None:
             batch_dir = "."
 
-        print(batch_dir)
-
         batch_dfs = []
+
         for ind in range(1 + (len(df) // batch_size)):
-            if Path(f"batch_{ind}.pkl").exists():
-                batch_dfs.append(pd.read_pickle(f"{batch_dir}/batch_{ind}.pkl"))
+            batch_file = (
+                SCRATCH_DIR / f"{self.__class__.__name__}-batch_{ind}-{batch_size}.pkl"
+            )
+            if batch_file.exists():
+                batch_dfs.append(pd.read_pickle(batch_file))
                 continue
             batch_min = ind * batch_size
             batch_max = min((ind + 1) * batch_size, len(df))
-            print(ind, batch_min, batch_max, len(df))
             df_batch = df.iloc[batch_min:batch_max]
             df_featurized_batch = super().featurize(df_batch)
-            df_featurized_batch.to_pickle(f"{batch_dir}/batch_{ind}.pkl")
+            batch_file.parent.mkdir(parents=True, exist_ok=True)
+            df_featurized_batch.to_pickle(batch_file)
             batch_dfs.append(df_featurized_batch)
 
         all_dfs = pd.concat(batch_dfs)

@@ -11,7 +11,8 @@ import tqdm
 from optimade.adapters.structures import Structure as OptimadeStructure
 from optimade.client import OptimadeClient
 
-from re2fractive import CAMPAIGN_DIR, DATASETS_DIR
+from re2fractive import DATASETS_DIR, FEATURES_DIR
+from re2fractive.featurizers import BatchableMODFeaturizer
 
 
 class Dataset(abc.ABC):
@@ -22,6 +23,9 @@ class Dataset(abc.ABC):
 
     id: str
     """A tag for the dataset, e.g. "Naccarato2019" or "MP2023"."""
+
+    id_prefix: str
+    """The prefix for the OPTIMADE IDs in the dataset."""
 
     references: list[dict] | None
     """Bibliographic references for the dataset, if available."""
@@ -54,11 +58,62 @@ class Dataset(abc.ABC):
         )
         return df.set_index("id")
 
-    @classmethod
-    def load(cls, campaign_id: str = "0001") -> "Dataset | None":
-        filename = (
-            CAMPAIGN_DIR / campaign_id / DATASETS_DIR / f"{cls.id}" / f"{cls.id}.jsonl"
+    def featurize_dataset(
+        self, featurizer: BatchableMODFeaturizer | type[BatchableMODFeaturizer]
+    ):
+        """Featurize a dataset using a given featurizer."""
+        pkl_filename = (
+            FEATURES_DIR
+            / f"{self.id}/{self.id}-{featurizer.__class__.__name__}-featurized.pkl"
         )
+        if pkl_filename.exists():
+            return pd.read_pickle(pkl_filename)
+
+        if not isinstance(featurizer, BatchableMODFeaturizer):
+            featurizer = featurizer()
+
+        if not pkl_filename.parent.exists():
+            pkl_filename.parent.mkdir(parents=True, exist_ok=True)
+
+        featurizer.batch_size = len(self) // 10
+        featurized_df = featurizer.featurize(self.structure_df)
+        featurized_df.to_pickle(pkl_filename)
+        return featurized_df
+
+    @property
+    def property_df(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "id": entry.id,
+                    **{
+                        k: getattr(entry.attributes, alias, None)
+                        for k, alias in self.properties.items()
+                    },
+                }
+                for entry in self.data
+            ]
+        )
+        return df.set_index("id")
+
+    @property
+    def structure_df(self):
+        """Returns a dataframe with the pymatgen structure and the target properties
+        defined by the dataset."""
+        df = pd.DataFrame(
+            [
+                {
+                    "id": entry.id,
+                    "structure": entry.as_pymatgen,
+                }
+                for entry in self.data
+            ]
+        )
+        return df.set_index("id")
+
+    @classmethod
+    def load(cls) -> "Dataset | None":
+        filename = DATASETS_DIR / f"{cls.id}" / f"{cls.id}.jsonl"
         self = cls()
 
         if filename.exists():
@@ -69,8 +124,8 @@ class Dataset(abc.ABC):
 
         return None
 
-    def save(self, campaign_id: str = "0001"):
-        dataset_dir = CAMPAIGN_DIR / campaign_id / DATASETS_DIR / f"{self.id}"
+    def save(self):
+        dataset_dir = DATASETS_DIR / f"{self.id}"
         dataset_dir.mkdir(parents=True, exist_ok=True)
         with open(dataset_dir / f"{self.id}.jsonl", "w") as f:
             for entry in self.data:
@@ -85,14 +140,16 @@ class MP2023Dataset(Dataset):
 
     id: str = "MP2023"
 
+    id_prefix: str = "https://optimade.materialsproject.org/v1/structures"
+
     @classmethod
-    def load(cls, campaign_id: str = "0001") -> "MP2023Dataset":
+    def load(cls) -> "MP2023Dataset":
         """Use the MP API to load a dataset of materials with a band gap and energy above hull,
         then convert these to the OPTIMADE format and alias some properties.
 
         """
 
-        self = super().load(campaign_id)
+        self = super().load()
         if self is not None:
             return self  # type: ignore
 
@@ -123,15 +180,15 @@ class MP2023Dataset(Dataset):
             optimade_doc["attributes"]["_mp_formation_energy_per_atom"] = (
                 doc.formation_energy_per_atom
             )
-            optimade_doc["attributes"]["immutable_id"] = str(doc.material_id)
             optimade_doc["attributes"]["_mp_refractive_index"] = doc.n
-            optimade_doc["id"] = str(doc.material_id)
+            optimade_doc["id"] = cls.id_prefix + "/" + str(doc.material_id)
+            optimade_doc["attributes"]["immutable_id"] = str(doc.material_id)
             optimade_docs.append(optimade_doc)
 
         self = cls()
         self.data = [OptimadeStructure(doc) for doc in optimade_docs]
         self.metadata = {"ctime": datetime.datetime.now().isoformat()}
-        self.save(campaign_id)
+        self.save()
         return self
 
 
@@ -144,6 +201,8 @@ class NaccaratoDataset(Dataset):
 
     id: str = "Naccarato2019"
 
+    id_prefix: str = "https://optimade.materialsproject.org/v1/structures"
+
     references: list[dict] | None = [
         {
             "authors": ["Naccarato, F.", "others"],
@@ -152,8 +211,8 @@ class NaccaratoDataset(Dataset):
     ]
 
     @classmethod
-    def load(cls, campaign_id: str = "0001") -> "NaccaratoDataset":
-        self = super().load(campaign_id)
+    def load(cls) -> "NaccaratoDataset":
+        self = super().load()
         if self is not None:
             return self  # type: ignore
 
@@ -161,7 +220,7 @@ class NaccaratoDataset(Dataset):
             f"Previously created dataset not found; loading {cls.id} dataset from scratch"
         )
 
-        db_path = CAMPAIGN_DIR / campaign_id / DATASETS_DIR / cls.id / "Naccarato.csv"
+        db_path = DATASETS_DIR / cls.id / "Naccarato.csv"
 
         if not db_path.exists():
             urllib.request.urlretrieve(
@@ -202,6 +261,9 @@ class NaccaratoDataset(Dataset):
                 print(f"ID mismatch: {structure['id']} != {mp_id}")
                 continue
 
+            structure["id"] = self.id_prefix + "/" + mp_id
+            structure["attributes"]["immutable_id"] = mp_id
+
             structure["attributes"]["_naccarato_refractive_index"] = np.mean(
                 [row["Ref_index (1)"], row["Ref_index (2)"], row["Ref_index (3)"]]
             )
@@ -230,5 +292,5 @@ class NaccaratoDataset(Dataset):
 
         self.metadata = {"ctime": datetime.datetime.now().isoformat()}
 
-        self.save(campaign_id)
+        self.save()
         return self
