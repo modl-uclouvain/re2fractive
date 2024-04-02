@@ -17,7 +17,7 @@ def test_naccarato():
     assert (DATASETS_DIR / "Naccarato2019" / "meta.json").exists()
 
     # sanity checks on particular results
-    df = dataset.as_df()
+    df = dataset.as_df
 
     assert len(df) == 3_688
 
@@ -104,7 +104,7 @@ def test_mp2023():
     assert (DATASETS_DIR / "Naccarato2019" / "meta.json").exists()
 
     # sanity checks on particular results
-    df = dataset.as_df()
+    df = dataset.as_df
 
     assert len(df) == 33_087
 
@@ -168,3 +168,41 @@ def test_mp2023():
     property_df = dataset.property_df
     assert "hull_distance" in property_df.columns
     assert "band_gap" in property_df.columns
+
+
+@pytest.mark.skipif(
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
+    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+)
+def test_alexandria():
+    from re2fractive.datasets import Alexandria2024Dataset
+
+    alexandria = Alexandria2024Dataset.load()
+    assert (DATASETS_DIR / "Alexandria2024" / "Alexandria2024.jsonl").exists()
+    assert (DATASETS_DIR / "Alexandria2024" / "meta.json").exists()
+
+    assert len(alexandria) == 104_860
+    df = alexandria.as_df
+    assert df.loc["agm1000007964"]["chemical_formula_reduced"] == "Cl4Zr"
+    assert df.loc["agm1000007964"]["_alexandria_band_gap"] == 3.752
+
+
+@pytest.mark.skipif(
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
+    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+)
+def test_gnome():
+    from re2fractive.datasets import GNome2024Dataset
+
+    gnome = GNome2024Dataset.load()
+    assert (DATASETS_DIR / "GNome2024" / "GNome2024.jsonl").exists()
+    assert (DATASETS_DIR / "GNome2024" / "meta.json").exists()
+
+    assert len(gnome) == 384_938
+    df = gnome.as_df
+    assert (
+        df.loc[
+            "https://optimade-gnome.odbx.science/v1/structures/data/gnome_data/by_id.zip/data/gnome_data/by_id/000006a8c4.CIF"
+        ]["chemical_formula_reduced"]
+        == "CsS6Zr3"
+    )
