@@ -19,6 +19,8 @@ class Dataset(abc.ABC):
     """The Dataset object provides a container for OPTIMADE structures
     that are decorated with the same set of properties.
 
+    It is assumed that each dataset can fit into memory.
+
     """
 
     id: str
@@ -52,6 +54,7 @@ class Dataset(abc.ABC):
     def __getitem__(self, index):
         return self.data[index]
 
+    @property
     def as_df(self):
         df = pd.DataFrame(
             [{"id": entry.id, **entry.as_dict["attributes"]} for entry in self.data]
@@ -294,3 +297,55 @@ class NaccaratoDataset(Dataset):
 
         self.save()
         return self
+
+
+class OptimadeDataset(Dataset):
+    base_url: str
+    filter: str
+
+    @classmethod
+    def load(cls) -> "OptimadeDataset":
+        self = super().load()
+        if self is not None:
+            return self  # type: ignore
+
+        print(
+            f"Previously created dataset not found; loading {cls.id} dataset from scratch"
+        )
+
+        client = OptimadeClient(cls.base_url, silent=False, max_results_per_provider=0)
+        results = client.get(cls.filter)
+
+        self = cls()
+        self.data = [
+            OptimadeStructure(s)
+            for s in results["structures"][cls.filter][cls.base_url]["data"]
+        ]
+        self.metadata = {"ctime": datetime.datetime.now().isoformat()}
+
+        self.save()
+        return self
+
+
+class Alexandria2024Dataset(OptimadeDataset):
+    properties = {
+        "band_gap": "_alexandria_band_gap",
+        "hull_distance": "_alexandria_hull_distance",
+    }
+    id: str = "Alexandria2024"
+    base_url: str = "https://alexandria.icams.rub.de/pbe"
+    filter: str = "_alexandria_band_gap > 0.05 AND _alexandria_hull_distance <= 0.025"
+
+
+class GNome2024Dataset(OptimadeDataset):
+    properties = {}
+    id: str = "GNome2024"
+    base_url: str = "https://optimade-gnome.odbx.science"
+    filter: str = ""
+
+
+class odbx2024Dataset(OptimadeDataset):
+    properties = {"hull_distance": "_odbx_thermodynamics.hull_distance"}
+    id: str = "odbx2024"
+    base_url: str = "https://optimade.odbx.science"
+    filter: str = "_odbx_thermodynamics.hull_distance < 0.025"
