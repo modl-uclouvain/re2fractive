@@ -16,6 +16,8 @@ def test_naccarato():
     assert (DATASETS_DIR / "Naccarato2019" / "Naccarato.csv").exists()
     assert (DATASETS_DIR / "Naccarato2019" / "meta.json").exists()
 
+    assert dataset.targets == {"refractive_index"}
+
     # sanity checks on particular results
     df = dataset.as_df
 
@@ -90,6 +92,18 @@ def test_naccarato():
         2.15124715165,
     )
 
+    moddata = dataset.as_moddata()
+    assert moddata.df_featurized.shape == (3688, 198)
+    # ~40 or so features are dropped for being nearly constant or near-zero information content
+    assert len(moddata.optimal_features) == 158
+    assert moddata.optimal_features[0] == "DensityFeatures|density"
+    assert (
+        moddata.df_featurized.loc[
+            "https://optimade.materialsproject.org/v1/structures/mp-3444"
+        ]
+        is not None
+    )
+
 
 @pytest.mark.skipif(
     not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
@@ -101,7 +115,7 @@ def test_mp2023():
     assert MP2023Dataset.id == "MP2023"
     dataset = MP2023Dataset.load()
     assert (DATASETS_DIR / "MP2023" / "MP2023.jsonl").exists()
-    assert (DATASETS_DIR / "Naccarato2019" / "meta.json").exists()
+    assert (DATASETS_DIR / "MP2023" / "meta.json").exists()
 
     # sanity checks on particular results
     df = dataset.as_df
@@ -183,8 +197,30 @@ def test_alexandria():
 
     assert len(alexandria) == 104_860
     df = alexandria.as_df
-    assert df.loc["agm1000007964"]["chemical_formula_reduced"] == "Cl4Zr"
-    assert df.loc["agm1000007964"]["_alexandria_band_gap"] == 3.752
+    assert (
+        df.loc["https://alexandria.icams.rub.de/pbe/v1/structures/agm1000007964"][
+            "chemical_formula_reduced"
+        ]
+        == "Cl4Zr"
+    )
+    assert (
+        df.loc["https://alexandria.icams.rub.de/pbe/v1/structures/agm1000007964"][
+            "_alexandria_band_gap"
+        ]
+        == 3.752
+    )
+    assert (
+        df.loc["https://alexandria.icams.rub.de/pbe/v1/structures/agm1000009793"][
+            "chemical_formula_reduced"
+        ]
+        == "I2Zn"
+    )
+    assert (
+        df.loc["https://alexandria.icams.rub.de/pbe/v1/structures/agm1000009793"][
+            "_alexandria_band_gap"
+        ]
+        == 3.7505
+    )
 
 
 @pytest.mark.skipif(

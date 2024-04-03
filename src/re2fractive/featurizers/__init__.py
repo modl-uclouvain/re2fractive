@@ -51,6 +51,12 @@ class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
             batch_dfs.append(df_featurized_batch)
 
         all_dfs = pd.concat(batch_dfs)
+
+        for batch_file in SCRATCH_DIR.glob(
+            f"{self.__class__.__name__}-batch_*{batch_size}.pkl"
+        ):
+            batch_file.unlink()
+
         return modnet.featurizers.clean_df(all_dfs, drop_allnan=self.drop_allnan)
 
 
@@ -100,7 +106,6 @@ class MatminerFastFeaturizer(BatchableMODFeaturizer):
             )
             from matminer.featurizers.structure import (
                 DensityFeatures,
-                ElectronicRadialDistributionFunction,
                 EwaldEnergy,
                 GlobalSymmetryFeatures,
                 StructuralComplexity,
@@ -163,7 +168,6 @@ class MatminerFastFeaturizer(BatchableMODFeaturizer):
 
             self.structure_featurizers = (
                 DensityFeatures(),
-                ElectronicRadialDistributionFunction(),
                 EwaldEnergy(),
                 GlobalSymmetryFeatures(),
                 StructuralComplexity(),

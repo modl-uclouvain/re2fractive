@@ -2,12 +2,15 @@ import abc
 import datetime
 import json
 import os
+import pickle
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import tqdm
+from modnet.preprocessing import MODData
 from optimade.adapters.structures import Structure as OptimadeStructure
 from optimade.client import OptimadeClient
 
@@ -41,6 +44,9 @@ class Dataset(abc.ABC):
     properties: dict[str, str]
     """A dictionary mapping from a property name to the column name in the dataset."""
 
+    targets: set[str] | None = None
+    """A set of target properties for the dataset."""
+
     def __init__(self):
         if getattr(self, "id", None) is None:
             self.id = self.__class__.__name__.replace("Dataset", "")
@@ -61,25 +67,89 @@ class Dataset(abc.ABC):
         )
         return df.set_index("id")
 
+    def as_moddata(self, feature_store: pd.DataFrame | None = None) -> MODData:
+        """Load the dataset as a MODData, loading any feature stores if available."""
+        featurizer = None
+        if feature_store is None and (
+            feature_stores := list(
+                FEATURES_DIR.glob(f"{self.id}/{self.id}-*-featurized.pkl")
+            )
+        ):
+            feature_path: Path = feature_stores[0]
+            print(f"Loading feature store from {feature_path}")
+            df_featurized = pd.read_pickle(feature_path)
+            featurizer_path = Path(
+                str(feature_path).replace("featurized", "featurizer")
+            )
+            if featurizer_path.exists():
+                with open(featurizer_path, "rb") as f:
+                    featurizer = pickle.load(f)
+        elif isinstance(feature_store, pd.DataFrame):
+            df_featurized = feature_store
+        else:
+            raise RuntimeError(f"No feature store found for {self.id}")
+
+        if self.targets is None:
+            raise RuntimeError(
+                f"No targets defined for {self.id}, cannot create MODData"
+            )
+        target = list(self.targets)[0]
+
+        moddata = MODData(
+            materials=self.structure_df["structure"].values,
+            targets=self.property_df[target].values,
+            structure_ids=list(self.as_df.index),
+            target_names=[target],
+            df_featurized=df_featurized,
+            featurizer=featurizer,
+        )
+
+        if df_featurized.attrs.get("optimal_features", None) is not None:
+            moddata.optimal_features = df_featurized.attrs["optimal_features"]
+            moddata.optimal_features_by_target = df_featurized.attrs[
+                "optimal_features_by_target"
+            ]
+
+        return moddata
+
     def featurize_dataset(
-        self, featurizer: BatchableMODFeaturizer | type[BatchableMODFeaturizer]
+        self,
+        featurizer: BatchableMODFeaturizer | type[BatchableMODFeaturizer],
+        feature_select: bool = True,
+        overwrite: bool = False,
     ):
         """Featurize a dataset using a given featurizer."""
         pkl_filename = (
             FEATURES_DIR
             / f"{self.id}/{self.id}-{featurizer.__class__.__name__}-featurized.pkl"
         )
+
         if pkl_filename.exists():
-            return pd.read_pickle(pkl_filename)
+            if overwrite:
+                pkl_filename.rename(pkl_filename.with_suffix(".bak"))
+            else:
+                return pd.read_pickle(pkl_filename)
 
         if not isinstance(featurizer, BatchableMODFeaturizer):
             featurizer = featurizer()
 
+        featurizer.batch_size = len(self) // 10
+        featurized_df = featurizer.featurize(self.structure_df)
+
+        # If this dataset has a target, and it is requested, do feature selection and reorder the df
+        # before saving
+        if feature_select and self.targets:
+            moddata = self.as_moddata(feature_store=featurized_df)
+            moddata.feature_selection(n=-1, drop_thr=0.05)
+            featurized_df.attrs["feature_selected"] = True
+            featurized_df.attrs["optimal_features_by_target"] = (
+                moddata.optimal_features_by_target
+            )
+            featurized_df.attrs["optimal_features"] = moddata.optimal_features
+
         if not pkl_filename.parent.exists():
             pkl_filename.parent.mkdir(parents=True, exist_ok=True)
 
-        featurizer.batch_size = len(self) // 10
-        featurized_df = featurizer.featurize(self.structure_df)
         featurized_df.to_pickle(pkl_filename)
         return featurized_df
 
@@ -196,6 +266,8 @@ class MP2023Dataset(Dataset):
 
 
 class NaccaratoDataset(Dataset):
+    targets = {"refractive_index"}
+
     properties = {
         "refractive_index": "_naccarato_refractive_index",
         "band_gap": "_naccarato_gga_bandgap",
@@ -321,6 +393,12 @@ class OptimadeDataset(Dataset):
             OptimadeStructure(s)
             for s in results["structures"][cls.filter][cls.base_url]["data"]
         ]
+
+        for ind, _ in enumerate(self.data):
+            self.data[
+                ind
+            ].entry.id = f"{self.base_url}/v1/structures/{self.data[ind].entry.id}"
+
         self.metadata = {"ctime": datetime.datetime.now().isoformat()}
 
         self.save()

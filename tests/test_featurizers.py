@@ -27,7 +27,7 @@ def mp_df():
 
 
 def test_matminer_fast_featurizer(mp_df, tmpdir):
-    num_expected_features = 599
+    num_expected_features = 198
     featurizer = MatminerFastFeaturizer()
     featurizer.batch_size = None
     featurizer.batch_dir = tmpdir
