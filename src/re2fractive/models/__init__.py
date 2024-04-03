@@ -1,10 +1,11 @@
 import os
 
+from modnet.hyper_opt import FitGenetic
 from modnet.models import EnsembleMODNetModel
 from modnet.preprocessing import MODData
-from modnet.hyper_opt import FitGenetic
-from re2fractive.datasets import Dataset
+
 from re2fractive import MODELS_DIR
+from re2fractive.datasets import Dataset
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 

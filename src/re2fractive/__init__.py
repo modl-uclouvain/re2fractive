@@ -6,5 +6,6 @@ CAMPAIGNS_DIR = Path(__file__).parent.parent.parent / "campaigns"
 DATASETS_DIR = CAMPAIGNS_DIR / CAMPAIGN_ID / "datasets"
 FEATURES_DIR = CAMPAIGNS_DIR / CAMPAIGN_ID / "features"
 SCRATCH_DIR = CAMPAIGNS_DIR / CAMPAIGN_ID / "scratch"
+MODELS_DIR = CAMPAIGNS_DIR / CAMPAIGN_ID / "models"
 
 __all__ = ("CAMPAIGNS_DIR", "DATASETS_DIR", "FEATURES_DIR", "CAMPAIGN_ID")
