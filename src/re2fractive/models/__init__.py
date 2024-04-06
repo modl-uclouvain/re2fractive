@@ -36,16 +36,12 @@ def fit_model(
         raise NotImplementedError("Multiple datasets not supported yet")
 
     if hyper_opt:
-        if model_cls is not None:
-            raise ValueError("Cannot use custom model with hyper_opt")
-
         ga = FitGenetic(moddata)
-
         model = ga.run(
             size_pop=20,
             num_generations=10,
             nested=0,
-            n_jobs=6,
+            n_jobs=1,
             early_stopping=4,
             refit=0,
             fast=False,
