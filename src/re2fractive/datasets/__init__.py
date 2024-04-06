@@ -67,7 +67,9 @@ class Dataset(abc.ABC):
         )
         return df.set_index("id")
 
-    def as_moddata(self, feature_store: pd.DataFrame | None = None) -> MODData:
+    def as_moddata(
+        self, feature_store: pd.DataFrame | None = None, filter_=None
+    ) -> MODData:
         """Load the dataset as a MODData, loading any feature stores if available."""
         featurizer = None
         if feature_store is None and (
@@ -209,7 +211,11 @@ class Dataset(abc.ABC):
 
 
 class MP2023Dataset(Dataset):
-    properties = {"hull_distance": "_mp_energy_above_hull", "band_gap": "_mp_band_gap"}
+    properties = {
+        "hull_distance": "_mp_energy_above_hull",
+        "band_gap": "_mp_band_gap",
+        "refractive_index": "_mp_refractive_index",
+    }
 
     id: str = "MP2023"
 
