@@ -120,7 +120,7 @@ class Campaign:
             campaign_uuid = "0001"
 
         if isinstance(initial_dataset, type):
-            loaded_dataset = initial_dataset.load()
+            loaded_dataset = initial_dataset.load()  # type: ignore
             if loaded_dataset is not None:
                 initial_dataset = loaded_dataset
         assert isinstance(initial_dataset, Dataset)
@@ -191,8 +191,8 @@ class Campaign:
         errors = holdout_set.df_targets - preds
         mae = errors.abs().mean().values[0]
         metrics = {
-            "mean_absolute_error": mae,
-            "mean_uncertainty": stds.mean().values[0],
+            "mean_absolute_error": float(mae),
+            "mean_uncertainty": float(stds.mean().values[0]),
         }
 
         return preds, errors, stds, metrics
