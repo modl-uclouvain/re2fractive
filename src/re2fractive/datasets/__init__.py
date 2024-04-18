@@ -117,6 +117,9 @@ class Dataset(abc.ABC):
         overwrite: bool = False,
     ):
         """Featurize a dataset using a given featurizer."""
+        if not isinstance(featurizer, BatchableMODFeaturizer):
+            featurizer = featurizer()
+
         pkl_filename = (
             FEATURES_DIR
             / f"{self.id}/{self.id}-{featurizer.__class__.__name__}-featurized.pkl"
@@ -127,9 +130,6 @@ class Dataset(abc.ABC):
                 pkl_filename.rename(pkl_filename.with_suffix(".bak"))
             else:
                 return pd.read_pickle(pkl_filename)
-
-        if not isinstance(featurizer, BatchableMODFeaturizer):
-            featurizer = featurizer()
 
         featurizer.batch_size = len(self) // 10
         featurized_df = featurizer.featurize(self.structure_df)

@@ -1,45 +1,44 @@
-import os
-import random
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
-from jobflow import Flow, Maker, run_locally
-from modnet.models import MODNetModel
-from optimade.adapters import Structure as OptimadeStructure
+from jobflow import Maker
+from modnet.models import EnsembleMODNetModel, MODNetModel
+from sklearn.model_selection import train_test_split
 
+from re2fractive import EPOCHS_DIR
+from re2fractive.acquisition import extremise_expected_value, random_selection
 from re2fractive.datasets import Dataset
-from re2fractive.selection import extremise_expected_value, random_selection
-
-
-@dataclass
-class OptimadeQuery:
-    filter: str
-    """The OPTIMADE filter to be used to query the databases."""
-
-    providers: list[str]
-    """The list of database providers to query. Can point to either an index meta-database
-    or an individual OPTIMADE API.
-
-    """
+from re2fractive.featurizers import BatchableMODFeaturizer, MatminerFastFeaturizer
+from re2fractive.models import load_model
 
 
 @dataclass
 class CampaignLogistics:
-    local: bool
-    jfr_project: str | None
-    jfr_preferred_worker: str | None
+    local: bool = True
+    jfr_project: str | None = None
+    jfr_preferred_worker: str | None = None
 
 
 @dataclass
 class LearningStrategy:
+    initial_val_fraction: float = field(default=0.2)
+    """The fraction of the initial dataset to use as a holdout set throughout."""
+
+    random_seed: int = field(default=42)
+    """A random seed that can be controlled to make campaign runs deterministic."""
+
     min_data_points: int = field(default=100)
     """The minimum number of data points required before training a model."""
 
     min_increment: int = field(default=5)
     """The minimum number of data points required since the last training before
     refitting the model.
+    """
+
+    min_hyperopt_increment: int = field(default=500)
+    """The minimum number of data points required between full
+    hyperparameter optimisation runs.
     """
 
 
@@ -73,20 +72,20 @@ class Campaign:
 
     """
 
-    logistics: CampaignLogistics
+    logistics: CampaignLogistics = field(default_factory=CampaignLogistics)
     """A series of settings used to execute the jobflow workflows."""
 
-    learning_strategy: LearningStrategy
+    learning_strategy: LearningStrategy = field(default_factory=LearningStrategy)
     """The active learning strategy to take for training the models."""
 
     models: list = field(default_factory=list)
     """A list of models that have been trained so far."""
 
-    drop_initial_cols: list[str] | None = None
-    """For testing, drop this column from the initial dataset."""
+    # drop_initial_cols: list[str] | None = None
+    # """For testing, drop this column from the initial dataset."""
 
-    initial_model: MODNetModel | None = None
-    """An initial model to use to generate the first round of predictions."""
+    # initial_model: MODNetModel | None = None
+    # """An initial model to use to generate the first round of predictions."""
 
     explore_acquisition_function: Callable = random_selection
     """An explore-stage acqusition function that can e.g., weight
@@ -96,215 +95,109 @@ class Campaign:
 
     acquisition_function: Callable = extremise_expected_value
     """An exploit-stage acqusition function that defines the desired
-    screening wrt. final constraints and optimisation targets.
-    """
+    screening wrt. final constraints and optimisation targets. """
 
-    epochs: list[dict] = []
+    epochs: list[dict] = field(default_factory=list)
     """A container that stores the epochs that have already been run."""
 
-    _campaign_uuid: str | None = None
+    campaign_uuid: str | None = None
     """A UUID that uniquely identifies this campaign."""
 
-    def __post_init__(self):
-        self.logistics = CampaignLogistics(**self.logistics)  # type: ignore
-        self.learning_strategy = LearningStrategy(**self.learning_strategy)  # type: ignore
-        if not self._campaign_uuid:
-            import uuid
+    featurizer: BatchableMODFeaturizer = field(default=MatminerFastFeaturizer)
+    """The featurizer to use during learning."""
 
-            self._campaign_uuid = str(uuid.uuid4())
+    @classmethod
+    def new_campaign_from_dataset(
+        cls,
+        initial_dataset: Dataset | type[Dataset],
+        datasets: list[type[Dataset]] | None = None,
+    ):
+        from re2fractive import CAMPAIGN_ID
 
-        self.models = []
-        if self.initial_model:
-            self.models.append(self.initial_model)
-
-    @staticmethod
-    def load_checkpoint(fname: os.PathLike) -> "Campaign":
-        import pickle
-
-        with open(fname, "rb") as f:
-            return pickle.load(f)
-
-    @property
-    def oracle_property_map(self) -> dict[str, Oracle]:
-        map = {}
-        for oracle_desc in self.oracles:
-            properties = oracle_desc[0]
-            for p in properties:
-                map[p] = oracle_desc[1]
-        return map
-
-    def dump_checkpoint(self, fname: Path | None = None) -> None:
-        import pickle
-
-        if fname is None:
-            fname = Path(
-                f"campaign_checkpoint-{self._campaign_uuid}-{len(self.epochs)}.pkl"
-            )
-
-        i = 0
-        while fname.exists():
-            fname = Path(str(fname).replace(".pkl", f"-{i}.pkl"))
-            i += 1
-
-        with open(fname, "wb") as f:
-            pickle.dump(self, f)
-
-    def load_initial_dataset(self):
-        """Load the initial dataset from the provided datasets."""
-
-        dataset = self.datasets[0]
-        dataset.load()
-
-        property_counts = {}
-        for property in self.properties:
-            property_name_in_dataset = dataset.properties.get(property)
-            if property_name_in_dataset is None:
-                property_counts[property] = 0
-                continue
-            if self.drop_initial_cols and property in self.drop_initial_cols:
-                print(f"Dropping {property}")
-                for ind, _ in enumerate(dataset.data):
-                    dataset.data[ind]["attributes"].pop(property_name_in_dataset)
-
-            property_counts[property] = sum(
-                d["attributes"].get(property_name_in_dataset) is not None
-                for d in dataset.data
-            )
-
-        return dataset, property_counts
-
-    # def prepare_model_training(self, dataset, property_counts):
-
-    #     for p in property_counts:
-    #         if property_counts[p] < self.learning_strategy.min_data_points:
-    #             if p not in self.oracle_property_map:
-    #                 print(
-    #                     f"Cannot get more values for property {p}, no avaialble oracle from {self.oracle_property_map=}"
-    #                 )
-    #             elif self.learning_strategy.min_data_points > len(dataset.data):
-    #                 print(
-    #                     f"Dataset {dataset=} not large enough to train model with strategy {self.learning_strategy.min_data_points=}"
-    #                 )
-    #             else:
-    #                 # start by randomly computing some values
-    #                 # in reality these should be saved in a database
-    #                 for ind, d in enumerate(dataset.data):
-    #                     if d["attributes"].get(dataset.properties[p]) is not None:
-    #                         continue
-    #                     oracle = self.oracle_property_map[p]
-    #                     print(f"Computing {p} for {d['id']}")
-    #                     dataset.data[ind]["attributes"][dataset.properties[p]] = oracle(
-    #                         d
-    #                     )[p]
-
-    def train_initial_model(self, dataset):
-        """Train an initial model on the initial dataset."""
-        from modnet.preprocessing import MODData
-
-        training_data_subset = [
-            d
-            for d in dataset.data
-            if d["attributes"].get("refractive_index") is not None
-        ]
-        training_data = MODData(
-            [OptimadeStructure(d).as_pymatgen for d in training_data_subset],
-            [d["attributes"]["refractive_index"] for d in training_data_subset],
-        )
-
-        training_data.featurize(n_jobs=1)
-
-        model = self.model_cls(
-            targets=[["refractive_index"]], weights={"refractive_index": 1}
-        )
-
-        model.fit(training_data)
-
-        self.models.append(model)
-
-        return model
-
-    def run_epoch(self):
-        dataset_counter = 0
-        if self.models:
-            model = self.models[-1]
+        if CAMPAIGN_ID is not None:
+            campaign_uuid = CAMPAIGN_ID
         else:
-            raise RuntimeError(
-                "No trained models yet; please initialise campaign with existing model or train one."
-            )
+            campaign_uuid = "0001"
 
-        self.predict(model, self.datasets[dataset_counter])
-        candidates = self.select(self.datasets[dataset_counter])
-        workflows: dict[str, dict[tuple[str, ...], Any]] = {}
+        if isinstance(initial_dataset, type):
+            loaded_dataset = initial_dataset.load()
+            if loaded_dataset is not None:
+                initial_dataset = loaded_dataset
+        assert isinstance(initial_dataset, Dataset)
+        assert initial_dataset is not None
+        return cls(
+            oracles=[],
+            properties=list(initial_dataset.properties.keys()),
+            model_cls=EnsembleMODNetModel,
+            datasets=[type(initial_dataset)] + datasets
+            if datasets
+            else [type(initial_dataset)],
+            campaign_uuid=campaign_uuid,
+        )
 
-        for candidate in candidates:
-            workflows[candidate.id] = {}
-            for prop, oracle in self.oracles:
-                if isinstance(oracle, Maker):
-                    compute = oracle.make
-                else:
-                    compute = oracle
-                workflows[candidate.id][prop] = compute(candidate)
+    def first_step(self, model_id: int | None = None):
+        """Kick off the first steps of a campaign."""
+        from re2fractive.models import fit_model
 
-        epoch = {
-            "candidates": candidates,
-            "workflows": workflows,
-            "dataset_counter": dataset_counter,
-        }
+        initial_dataset = self.datasets[0].load()
+        initial_dataset.featurize_dataset(self.featurizer)
+
+        train_inds, test_inds = train_test_split(
+            range(len(initial_dataset)),
+            test_size=self.learning_strategy.initial_val_fraction,
+            random_state=self.learning_strategy.random_seed,
+        )
+
+        assert len(train_inds) > len(test_inds)
+        self._holdout_inds = test_inds
+
+        train_moddata, test_moddata = initial_dataset.as_moddata().split(
+            (train_inds, test_inds)
+        )
+
+        if model_id is not None:
+            model = load_model(model_id)
+        else:
+            model, model_id = fit_model(train_moddata)
+
+        _, _, _, metrics = self.evaluate_global_holdout(model)
+
+        epoch = {"model_metrics": metrics, "model_id": model_id}
         self.epochs.append(epoch)
 
-        for candidate in candidates:
-            for prop, oracle in self.oracles:
-                self.evaluate_workflow(workflows[candidate.id][prop])
+        self.checkpoint()
 
-        # get the property values out of the workflow
-        for candidate in candidates:
-            for prop, oracle in self.oracles:
-                candidate[prop] = workflows[candidate.id][prop].output
+    def checkpoint(self):
+        import json
 
-        epoch["computed_candidates"] = candidates
-        self.epochs[-1].update(epoch)
+        last_epoch = str(len(self.epochs) - 1)
+        last_epoch_dir = EPOCHS_DIR / last_epoch
+        last_epoch_dir.mkdir(exist_ok=True, parents=True)
+        with open(last_epoch_dir / f"{last_epoch}.json", "w") as f:
+            json.dump(self.epochs[-1], f)
 
-        # Update the dataset(s) with an inefficient loop for now
-        candidate_ids = {candidate.id for candidate in candidates}
-        for ind, d in enumerate(self.datasets[dataset_counter]):
-            if d.id in candidate_ids:
-                self.datasets[dataset_counter][ind].update(candidate)
+    def evaluate_global_holdout(self, model: EnsembleMODNetModel):
+        """Make predictions with a given model on the global holdout set
+        from the initial dataset.
 
-        # Then potentially retrain the model
-        self.dump_checkpoint()
+        """
+        initial_dataset = self.datasets[0].load()
+        holdout_set = initial_dataset.as_moddata().from_indices(self._holdout_inds)
 
-    def evaluate_workflow(self, workflow: Flow):
-        if self.logistics.local:
-            run_locally(workflow)
-
-    def exploit_explore_heuristic(self):
-        return random.random() < 0.5
-
-    def select(self, dataset):
-        """Select the next structures to evaluate."""
-        if self.exploit_explore_heuristic():
-            selector = self.explore_acquisition_function
-        else:
-            selector = self.explore_acquisition_function
-
-        return selector(
-            [d for d in dataset if d.get(property) is None],
-            dataset,
-            num_to_select=self.learning_strategy.min_increment,
+        preds, stds = model.predict(
+            holdout_set, return_unc=True, remap_out_of_bounds=False
         )
 
-    def predict(self, model: MODNetModel, candidates: Iterable[OptimadeStructure]):
-        """Massage dataset into format for the model and run prediction step."""
-        import pandas as pd
+        errors = holdout_set.df_targets - preds
+        mae = errors.abs().mean().values[0]
+        metrics = {
+            "mean_absolute_error": mae,
+            "mean_uncertainty": stds.mean().values[0],
+        }
 
-        df_featurized = pd.DataFrame([d.attributes for d in candidates])
-        return model.predict(df_featurized)
+        return preds, errors, stds, metrics
 
-    def run_setup(self):
-        _ = self.load_initial_dataset()
+        """Marches the campaign forward through the next step, based on the current state."""
 
-        if self.initial_model is None:
-            raise RuntimeError("No initial model provided")
-            # self.models.append(self.prepare_model_training(dataset, property_counts))
-
-        self.models.append(self.initial_model)
+        if not self.epochs:
+            return self.first_steps()
