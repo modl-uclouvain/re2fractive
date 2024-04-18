@@ -17,7 +17,8 @@ def fit_model(
     ensemble_n_models: int = 32,
     ensemble_n_feat: int = 32,
     ensemble_architecture: list[list[int]] = [[32], [16], [16], [8]],
-):
+    n_jobs: int | None = None,
+) -> tuple[EnsembleMODNetModel, int]:
     MODELS_DIR.mkdir(exist_ok=True, parents=True)
     existing_models = [int(m.name) for m in MODELS_DIR.glob("*")]
 
@@ -35,13 +36,18 @@ def fit_model(
     else:
         raise NotImplementedError("Multiple datasets not supported yet")
 
+    if n_jobs is None:
+        import multiprocessing as mp
+
+        n_jobs = min(2, mp.cpu_count() - 2)
+
     if hyper_opt:
         ga = FitGenetic(moddata)
         model = ga.run(
             size_pop=20,
             num_generations=10,
             nested=0,
-            n_jobs=1,
+            n_jobs=n_jobs,
             early_stopping=4,
             refit=0,
             fast=False,
@@ -50,18 +56,18 @@ def fit_model(
         model = model_cls(
             n_models=ensemble_n_models,
             targets=[list(moddata.target_names)],
-            weights={t: 1.0 for t in moddata.target_names},
+            weights={t: 1.0 for t in list(moddata.target_names)},
             n_feat=ensemble_n_feat,
             num_neurons=ensemble_architecture,
         )
 
-        model.fit(moddata, n_jobs=1)
+        model.fit(moddata, n_jobs=n_jobs)
 
     (MODELS_DIR / str(model_id)).mkdir(exist_ok=True, parents=True)
     model.save(str(MODELS_DIR / str(model_id) / f"{model_id}.pkl"))
     moddata.df_targets.to_csv(MODELS_DIR / str(model_id) / "training.csv")
 
-    return model
+    return model, model_id
 
 
 def load_model(model_id: int):
