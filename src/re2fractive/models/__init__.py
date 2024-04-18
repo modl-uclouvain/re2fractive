@@ -55,7 +55,7 @@ def fit_model(
     else:
         model = model_cls(
             n_models=ensemble_n_models,
-            targets=[list(moddata.target_names)],
+            targets=[[list(moddata.target_names)]],
             weights={t: 1.0 for t in list(moddata.target_names)},
             n_feat=ensemble_n_feat,
             num_neurons=ensemble_architecture,
