@@ -5,54 +5,13 @@ from modnet.preprocessing import MODData
 from plotly.subplots import make_subplots
 
 
-def compare_error_distributions(test_moddata, predictions_a, predictions_b):
-    fig = go.Figure()
-    fig.update_layout(
-        width=1000,
-        height=800,
-    )
-
-    mae_a = (
-        (
-            test_moddata.df_targets[test_moddata.df_targets.columns[0]]
-            - predictions_a[test_moddata.df_targets.columns[0]]
-        )
-        .abs()
-        .mean()
-    )
-    fig.add_trace(
-        go.Histogram(
-            x=test_moddata.df_targets[test_moddata.df_targets.columns[0]]
-            - predictions_a[test_moddata.df_targets.columns[0]],
-            name=f"Default MAE: {mae_a:.4f}",
-            hovertext=mae_a,
-        )
-    )
-    mae_b = (
-        (
-            test_moddata.df_targets[test_moddata.df_targets.columns[0]]
-            - predictions_b[test_moddata.df_targets.columns[0]]
-        )
-        .abs()
-        .mean()
-    )
-    fig.add_trace(
-        go.Histogram(
-            x=test_moddata.df_targets[test_moddata.df_targets.columns[0]]
-            - predictions_b[test_moddata.df_targets.columns[0]],
-            name=f"Hyperopt MAE: {mae_b:.4f}",
-            hovertext=mae_b,
-        )
-    )
-
-    fig.show()
-
-
 def parity_plot(
     test_moddata: MODData,
     predictions: pd.DataFrame,
     uncertainties: pd.DataFrame,
     x: pd.DataFrame | None = None,
+    selected_df: pd.DataFrame | None = None,
+    title: str = "Parity plot",
 ):
     """Make parity plots of model performance vs true values.
 
@@ -61,6 +20,8 @@ def parity_plot(
         predictions: DataFrame of model predictions.
         uncertainties: DataFrame of model uncertainties.
         x: Optional alternative x-axis to use for plotting.
+        selected_df: Optional DataFrame of selected data points to highlight.
+        title: Title of the plot.
 
     """
     colours = px.colors.qualitative.Plotly
@@ -68,6 +29,7 @@ def parity_plot(
     point_colour = colours[0]
     error_colour = colours[1]
     point_colour_2 = colours[2]
+    point_colour_3 = colours[3]
 
     target = test_moddata.df_targets.columns[0]
     fig = make_subplots(
@@ -82,6 +44,7 @@ def parity_plot(
         font_family="Arial",
         width=1000,
         height=800,
+        title=title,
     )
 
     if x is None:
@@ -129,6 +92,27 @@ def parity_plot(
             row=1,
             col=1,
         )
+
+        if selected_df:
+            fig.add_trace(
+                go.Scatter(
+                    x=selected_df[target],
+                    y=predictions.loc[selected_df.index, target],
+                    mode="markers",
+                    marker=dict(
+                        size=5,
+                        symbol="circle",
+                        opacity=1,
+                        line=dict(width=1, color="DarkSlateGrey"),
+                        color=point_colour_3,
+                    ),
+                    showlegend=False,
+                    hovertext=selected_df.index,
+                    hoverinfo="text",
+                ),
+                row=1,
+                col=1,
+            )
 
         # Label axes
         fig.update_xaxes(
@@ -314,6 +298,49 @@ def parity_plot(
     fig.update_xaxes(title_text="Frequency", row=2, col=2)
     fig.update_yaxes(
         title_text=f'{target.replace("_", " ").title()} prediction error', row=2, col=2
+    )
+
+    fig.show()
+
+
+def compare_error_distributions(test_moddata, predictions_a, predictions_b):
+    fig = go.Figure()
+    fig.update_layout(
+        width=1000,
+        height=800,
+    )
+
+    mae_a = (
+        (
+            test_moddata.df_targets[test_moddata.df_targets.columns[0]]
+            - predictions_a[test_moddata.df_targets.columns[0]]
+        )
+        .abs()
+        .mean()
+    )
+    fig.add_trace(
+        go.Histogram(
+            x=test_moddata.df_targets[test_moddata.df_targets.columns[0]]
+            - predictions_a[test_moddata.df_targets.columns[0]],
+            name=f"Default MAE: {mae_a:.4f}",
+            hovertext=mae_a,
+        )
+    )
+    mae_b = (
+        (
+            test_moddata.df_targets[test_moddata.df_targets.columns[0]]
+            - predictions_b[test_moddata.df_targets.columns[0]]
+        )
+        .abs()
+        .mean()
+    )
+    fig.add_trace(
+        go.Histogram(
+            x=test_moddata.df_targets[test_moddata.df_targets.columns[0]]
+            - predictions_b[test_moddata.df_targets.columns[0]],
+            name=f"Hyperopt MAE: {mae_b:.4f}",
+            hovertext=mae_b,
+        )
     )
 
     fig.show()
