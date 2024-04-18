@@ -1,5 +1,13 @@
+"""This module defines the core logic of a re2fractive `Campaign`.
+
+A campaign is defined by target property(s), a set of datasets,
+oracles, model and featurization parameters and a learning strategy.
+
+"""
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pprint import pprint
 from typing import TypeAlias
 
 from jobflow import Maker
@@ -136,7 +144,14 @@ class Campaign:
         )
 
     def first_step(self, model_id: int | None = None):
-        """Kick off the first steps of a campaign."""
+        """Kick off the first steps of a campaign by taking the
+        defined `initial_dataset`, separating out a holdout set
+        according to the `learning_strategy`, and training a model
+        on it, which is then applied to all remaining datasets.
+
+        Any datasets that need to be featurized along the way will be.
+
+        """
         from re2fractive.models import fit_model
 
         initial_dataset = self.datasets[0].load()
@@ -151,30 +166,55 @@ class Campaign:
         assert len(train_inds) > len(test_inds)
         self._holdout_inds = test_inds
 
-        train_moddata, test_moddata = initial_dataset.as_moddata().split(
-            (train_inds, test_inds)
-        )
+        train_moddata, _ = initial_dataset.as_moddata().split((train_inds, test_inds))
 
         if model_id is not None:
             model = load_model(model_id)
         else:
             model, model_id = fit_model(train_moddata)
 
-        _, _, _, metrics = self.evaluate_global_holdout(model)
+        _, _, _, metrics, _ = self.evaluate_global_holdout(model)
 
-        epoch = {"model_metrics": metrics, "model_id": model_id}
-        self.epochs.append(epoch)
+        predictions, std_devs = self.evaluate_design_space(model)
+
+        epoch = {
+            "model_metrics": metrics,
+            "model_id": model_id,
+            "design_space": {"predictions": predictions, "std_devs": std_devs},
+        }
+
+        self.epochs = [epoch]
 
         self.checkpoint()
 
-    def checkpoint(self):
+    def checkpoint(self) -> None:
         import json
+        import pickle
 
         last_epoch = str(len(self.epochs) - 1)
         last_epoch_dir = EPOCHS_DIR / last_epoch
         last_epoch_dir.mkdir(exist_ok=True, parents=True)
+        if (last_epoch_dir / f"{last_epoch}.json").exists():
+            raise RuntimeError("Found existing epoch file, aborting checkpoint.")
         with open(last_epoch_dir / f"{last_epoch}.json", "w") as f:
             json.dump(self.epochs[-1], f)
+
+        with open(last_epoch_dir / "campaign.pkl", "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, epoch: int | None = None) -> "Campaign":
+        import pickle
+
+        if epoch is None:
+            epoch_names = sorted(list(EPOCHS_DIR.iterdir()))
+            final_epoch = epoch_names[-1]
+        else:
+            final_epoch = EPOCHS_DIR / str(epoch)
+        with open(final_epoch / "campaign.pkl", "rb") as f:
+            campaign = pickle.load(f)
+
+        return campaign
 
     def evaluate_global_holdout(self, model: EnsembleMODNetModel):
         """Make predictions with a given model on the global holdout set
@@ -195,9 +235,34 @@ class Campaign:
             "mean_uncertainty": float(stds.mean().values[0]),
         }
 
-        return preds, errors, stds, metrics
+        pprint(metrics)
 
+        return preds, errors, stds, metrics, holdout_set
+
+    def evaluate_design_space(self, model: EnsembleMODNetModel):
+        """Make predictions with a given model on the design space
+        of the remaining datasets.
+
+        """
+        if len(self.datasets) <= 1:
+            raise RuntimeError("No datasets left to evaluate.")
+        design_spaces = [d.load() for d in self.datasets[1:]]
+
+        predictions = []
+        std_devs = []
+
+        for d in design_spaces:
+            preds, stds = model.predict(
+                d.as_moddata(), return_unc=True, remap_out_of_bounds=False
+            )
+
+            predictions.append(preds.values.tolist())
+            std_devs.append(stds.values.tolist())
+
+        return predictions, std_devs
+
+    def march(self):
         """Marches the campaign forward through the next step, based on the current state."""
 
         if not self.epochs:
-            return self.first_steps()
+            return self.first_step()
