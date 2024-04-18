@@ -91,17 +91,13 @@ class Dataset(abc.ABC):
         else:
             raise RuntimeError(f"No feature store found for {self.id}")
 
-        if self.targets is None:
-            raise RuntimeError(
-                f"No targets defined for {self.id}, cannot create MODData"
-            )
-        target = list(self.targets)[0]
-
         moddata = MODData(
             materials=self.structure_df["structure"].values,
-            targets=self.property_df[target].values,
+            targets=self.property_df[list(self.targets)[0]].values
+            if self.targets is not None
+            else None,
             structure_ids=list(self.as_df.index),
-            target_names=[target],
+            target_names=[list(self.targets)[0]] if self.targets is not None else None,
             df_featurized=df_featurized,
             featurizer=featurizer,
         )
