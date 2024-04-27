@@ -19,6 +19,7 @@ dependencies = [
     "tqdm ~= 4.66",
     "mp-api ~= 0.41",
     "plotly ~= 5.20",
+    "matplotlib ~= 3.4",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,10 @@ dev = [
     "ruff",
     "mypy",
     "pre-commit",
+]
+
+pretrained = [
+    "matgl ~= 1.0",
 ]
 
 
