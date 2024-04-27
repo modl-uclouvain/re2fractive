@@ -5,20 +5,26 @@ oracles, model and featurization parameters and a learning strategy.
 
 """
 
+import datetime
+import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from pprint import pprint
 from typing import TypeAlias
 
+import pandas as pd
 from jobflow import Maker
 from modnet.models import EnsembleMODNetModel, MODNetModel
+from modnet.preprocessing import MODData
 from sklearn.model_selection import train_test_split
 
 from re2fractive import EPOCHS_DIR
 from re2fractive.acquisition import extremise_expected_value, random_selection
 from re2fractive.datasets import Dataset
 from re2fractive.featurizers import BatchableMODFeaturizer, MatminerFastFeaturizer
-from re2fractive.models import load_model
+from re2fractive.models import fit_model, load_model
 
 
 @dataclass
@@ -108,6 +114,9 @@ class Campaign:
     epochs: list[dict] = field(default_factory=list)
     """A container that stores the epochs that have already been run."""
 
+    train_moddata: MODData | None = None
+    """The training data that is used to train the model at the current campaign state."""
+
     campaign_uuid: str | None = None
     """A UUID that uniquely identifies this campaign."""
 
@@ -152,7 +161,6 @@ class Campaign:
         Any datasets that need to be featurized along the way will be.
 
         """
-        from re2fractive.models import fit_model
 
         initial_dataset = self.datasets[0].load()
         initial_dataset.featurize_dataset(self.featurizer)
@@ -164,28 +172,42 @@ class Campaign:
         )
 
         assert len(train_inds) > len(test_inds)
+
+        # Initialise the global holdout set and the initial training data
         self._holdout_inds = test_inds
+        self.train_moddata, _ = initial_dataset.as_moddata().split(
+            (train_inds, test_inds)
+        )
+        model_id, holdout_metrics, design_space = self.learn_and_evaluate(
+            self.train_moddata, model_id=model_id
+        )
 
-        train_moddata, _ = initial_dataset.as_moddata().split((train_inds, test_inds))
+        self.finalize_epoch(holdout_metrics, model_id, design_space)
 
+    def finalize_epoch(self, holdout_metrics, model_id, design_space):
+        epoch = {
+            "model_metrics": holdout_metrics,
+            "model_id": model_id,
+            "design_space": {
+                "predictions": design_space[0],
+                "std_devs": design_space[1],
+            },
+        }
+
+        self.epochs.append(epoch)
+        self.checkpoint()
+
+    def learn_and_evaluate(self, model_id: int | None = None):
         if model_id is not None:
             model = load_model(model_id)
         else:
-            model, model_id = fit_model(train_moddata)
+            model, model_id = fit_model(self.train_moddata)
 
         _, _, _, metrics, _ = self.evaluate_global_holdout(model)
 
         predictions, std_devs = self.evaluate_design_space(model)
 
-        epoch = {
-            "model_metrics": metrics,
-            "model_id": model_id,
-            "design_space": {"predictions": predictions, "std_devs": std_devs},
-        }
-
-        self.epochs = [epoch]
-
-        self.checkpoint()
+        return model_id, metrics, (predictions, std_devs)
 
     def checkpoint(self) -> None:
         import json
@@ -256,13 +278,132 @@ class Campaign:
                 d.as_moddata(), return_unc=True, remap_out_of_bounds=False
             )
 
-            predictions.append(preds.values.tolist())
-            std_devs.append(stds.values.tolist())
+            predictions.append(preds.values.flatten().tolist())
+            std_devs.append(stds.values.flatten().tolist())
 
         return predictions, std_devs
 
-    def march(self):
-        """Marches the campaign forward through the next step, based on the current state."""
+    def march(self, wait: bool = True):
+        """Marches the campaign forward through the next step, based on the current state.
+
+        Each epoch will *end* with the latest prediction of the design space. Each new epoch
+        starts by selecting new trials for computation, and then deciding whether to train or
+        update the model.
+
+        If wait is `True`, after potentially submitting calculations, this function will keep
+        polling the filesystem until they have been completed. If interrupted, re-running
+        the function will begin polling again.
+
+        """
 
         if not self.epochs:
             return self.first_step()
+
+        # Check whether an epoch was submitted previously, load from it if so
+        this_epoch_index: int = max([int(d.name) for d in EPOCHS_DIR.glob("*")])
+
+        # If campaign.pkl exists, this epoch is already run
+        if (EPOCHS_DIR / str(this_epoch_index) / "campaign.pkl").exists():
+            this_epoch_index += 1
+            self.start_new_epoch()
+
+        self.poll_epoch(this_epoch_index, wait=wait)
+
+        featurized_df, results_df = self.gather_results(this_epoch_index)
+        self.update_training_moddata(featurized_df, results_df)
+
+        model_id, holdout_metrics, design_space = self.learn_and_evaluate(
+            self.train_moddata,
+        )
+        self.finalize_epoch(holdout_metrics, model_id, design_space)
+
+    def start_new_epoch(self):
+        design_space = self.epochs[-1]["design_space"]
+        ranking = self.make_selection(design_space)
+
+        # Submit or get pre-computed trials from database
+        new_calcs = self.submit_oracle(ranking)
+
+    def _epoch_finished(self, epoch_index: int) -> bool:
+        """Check the epoch dir for results from all calculations."""
+        epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
+        if not epoch_calc_dir.exists():
+            return False
+
+        expected_calc_ids = {
+            d["id"]
+            for d in json.loads(
+                Path(epoch_calc_dir / "_submitted_ids.json").read_text()
+            )
+        }
+        finished_calc_ids = {
+            str(d.name.split(".")[0]) for d in epoch_calc_dir.glob("[A-z,0-9]*.json")
+        }
+        return expected_calc_ids == finished_calc_ids
+
+    def gather_results(self, epoch_index: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Gather results from the calculations in the epoch dir.
+
+        Returns the featurized dataframe and results dataframe for the
+        latest epoch of calcs.
+
+        """
+        epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
+        results = []
+        for calc in epoch_calc_dir.glob("[A-z,0-9]*.json"):
+            results.append(json.loads(calc.read_text()))
+
+        results_df = pd.DataFrame(results)
+        featurized_results_df = pd.DataFrame()
+        target_df = pd.DataFrame()
+        moddatas = [d.load().as_moddata() for d in self.datasets[1:]]
+        for row in results_df.iterrows():
+            for d in moddatas:
+                if row["id"] in d.featurized_df:
+                    featurized_results_df.append(d.featurized_df.loc[id])
+                    target_df.append(row)
+
+        assert isinstance(self.train_moddata, MODData)
+
+        return featurized_results_df, target_df
+
+    def update_training_moddata(self, featurized_results, target_results):
+        all_featurized_dfs = pd.concat(
+            self.train_moddata.df_featurized,
+            featurized_results,
+        )
+        all_targets = pd.concat(self.train_moddata.df_targets, target_results).values
+        return MODData(
+            df_featurized=all_featurized_dfs,
+            targets=all_targets,
+            target_names=self.train_moddata.target_names,
+            structure_ids=all_featurized_dfs.index.values,
+        )
+
+    def poll_epoch(self, epoch_index: int, wait: bool = True) -> bool:
+        """Look up in the calculations list whether this calcs of this
+        calcs have finished/terminated, and update the epoch accordingly.
+
+        Returns `True` once the epoch has completed, `False` otherwise.
+
+        """
+
+        epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
+        while True:
+            if self._epoch_finished():
+                return True
+            if wait:
+                print(
+                    f"{datetime.datetime.now()} -- epoch {epoch_index} not yet finished, waiting 10 minutes."
+                )
+                time.sleep(600)
+                continue
+            else:
+                print(
+                    f"{datetime.datetime.now()} -- epoch {epoch_index} not yet finished, exiting..."
+                )
+                return False
+
+    def make_selection(self, design_space):
+        ranking = self.acquisition_function(design_space)
+        return ranking

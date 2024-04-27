@@ -185,7 +185,7 @@ class Dataset(abc.ABC):
         return df.set_index("id")
 
     @classmethod
-    def load(cls) -> "Dataset | None":
+    def load(cls) -> "Dataset":
         filename = DATASETS_DIR / f"{cls.id}" / f"{cls.id}.jsonl"
         self = cls()
 
@@ -195,7 +195,7 @@ class Dataset(abc.ABC):
 
             return self
 
-        return None
+        return None  # type: ignore
 
     def save(self):
         dataset_dir = DATASETS_DIR / f"{self.id}"
