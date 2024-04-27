@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -23,7 +24,7 @@ def plot_design_space(
         font_family="Arial",
         width=1000,
         height=800,
-        title=f"Design space after {len(campaign.epochs)} iterations",
+        title=f"Design space after {len(campaign.epochs)} iteration(s)",
     )
 
     # plot initial oracle set
@@ -55,41 +56,60 @@ def plot_design_space(
         ),
     )
 
+    bins = np.arange(0, 15, step=0.5)
+    top = 20
+
     epoch = campaign.epochs[-1]
     if len(campaign.datasets) > 1:
         for ind, d in enumerate(campaign.datasets[1:]):
             if isinstance(d, type):
                 d = d.load()
             aux_name = d.properties[aux]
-            design_x = [entry.as_dict["attributes"][aux_name] for entry in d.data]
-            pred_y = epoch["design_space"]["predictions"][ind]
-            std_y = epoch["design_space"]["std_devs"][ind]
-
-            fig.add_trace(
-                go.Scatter(
-                    x=design_x,
-                    y=pred_y,
-                    error_y=dict(
-                        type="data",
-                        array=std_y,
-                        visible=True,
-                        color=error_colour,
-                    ),
-                    mode="markers",
-                    marker=dict(
-                        size=5,
-                        symbol="circle",
-                        opacity=1,
-                        line=dict(width=1, color="DarkSlateGrey"),
-                        color=point_colour_3,
-                    ),
-                    name=f"Predicted {d.__class__.__name__}",
-                ),
+            design_x = np.array(
+                [entry.as_dict["attributes"][aux_name] for entry in d.data]
             )
+            pred_y = np.array(epoch["design_space"]["predictions"][ind])
+            std_y = np.array(epoch["design_space"]["std_devs"][ind])
+
+            colour = [point_colour_2, point_colour_3][ind]
+
+            name = f"Predicted {d.__class__.__name__}"
+
+            for j, bin in enumerate(bins[:-1]):
+                binds = np.where((design_x > bin) & (design_x < bin + bins[j + 1]))
+                binned_y = pred_y[binds]
+                binned_x = design_x[binds]
+                binned_std = std_y[binds]
+
+                top_bins = np.argsort(binned_y)[len(binds) - top :]
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=binned_x[top_bins],
+                        y=binned_y[top_bins],
+                        error_y=dict(
+                            type="data",
+                            array=binned_std[top_bins],
+                            visible=True,
+                            color=colour,
+                        ),
+                        mode="markers",
+                        marker=dict(
+                            size=5,
+                            symbol="circle",
+                            opacity=0.8,
+                            line=dict(width=1, color="DarkSlateGrey"),
+                            color=colour,
+                        ),
+                        name=name,
+                        legendgroup=name,
+                        showlegend=(j == 0),
+                    ),
+                )
 
     # Label axes
-    fig.update_xaxes(title_text=f"{aux_name}")
-    fig.update_yaxes(title_text=f"{target_name}")
+    fig.update_xaxes(title_text=f"{aux}")
+    fig.update_yaxes(title_text=f"{target}")
 
     # Start both axes at 0
     fig.update_xaxes(range=[0, None], zeroline=False)
