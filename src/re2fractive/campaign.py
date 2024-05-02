@@ -114,7 +114,7 @@ class Campaign:
     epochs: list[dict] = field(default_factory=list)
     """A container that stores the epochs that have already been run."""
 
-    train_moddata: MODData | None = None
+    train_moddata: MODData = None
     """The training data that is used to train the model at the current campaign state."""
 
     campaign_uuid: str | None = None
@@ -179,12 +179,12 @@ class Campaign:
             (train_inds, test_inds)
         )
         model_id, holdout_metrics, design_space = self.learn_and_evaluate(
-            self.train_moddata, model_id=model_id
+            model_id=model_id
         )
 
         self.finalize_epoch(holdout_metrics, model_id, design_space)
 
-    def finalize_epoch(self, holdout_metrics, model_id, design_space):
+    def finalize_epoch(self, holdout_metrics, model_id, design_space, results_df=None):
         epoch = {
             "model_metrics": holdout_metrics,
             "model_id": model_id,
@@ -192,6 +192,9 @@ class Campaign:
                 "predictions": design_space[0],
                 "std_devs": design_space[1],
             },
+            "selected": results_df.to_dict(orient="row")
+            if results_df is not None
+            else None,
         }
 
         self.epochs.append(epoch)
@@ -309,26 +312,34 @@ class Campaign:
 
         self.poll_epoch(this_epoch_index, wait=wait)
 
-        featurized_df, results_df = self.gather_results(this_epoch_index)
+        results_df = self.gather_results(this_epoch_index)
+
+        featurized_df, _ = self.gather_features(results_df)
         self.update_training_moddata(featurized_df, results_df)
 
         model_id, holdout_metrics, design_space = self.learn_and_evaluate(
             self.train_moddata,
         )
-        self.finalize_epoch(holdout_metrics, model_id, design_space)
+        self.finalize_epoch(holdout_metrics, model_id, design_space, results_df)
 
     def start_new_epoch(self):
-        design_space = self.epochs[-1]["design_space"]
-        ranking = self.make_selection(design_space)
+        pass
+        # design_space = self.epochs[-1]["design_space"]
+        # ranking = self.make_selection(design_space)
 
-        # Submit or get pre-computed trials from database
-        new_calcs = self.submit_oracle(ranking)
+        # # Submit or get pre-computed trials from database
+        # new_calcs = self.submit_oracle(ranking)
 
     def _epoch_finished(self, epoch_index: int) -> bool:
         """Check the epoch dir for results from all calculations."""
         epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
         if not epoch_calc_dir.exists():
             return False
+
+        return True
+
+        # For now, we assume that all calculations are finished as we are
+        # manually populating the calcs dirs
 
         expected_calc_ids = {
             d["id"]
@@ -341,8 +352,48 @@ class Campaign:
         }
         return expected_calc_ids == finished_calc_ids
 
-    def gather_results(self, epoch_index: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def gather_features(
+        self, results_df: pd.DataFrame
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Loop over a set of oracle results and find the featurized
+        and target data for the corresponding structures to be used in the next
+        epoch's training set.
+
+        Returns:
+            The featurized df and the target df.
+
+        """
+        featurized_results_df = pd.DataFrame()
+        target_df = pd.DataFrame()
+        moddatas = [d.load().as_moddata() for d in self.datasets[1:]]
+
+        print("Gathering results")
+        for d in moddatas:
+            # Collect the featurized data for the structures in the results
+            print(f"Gathering results from {d.__class__.__name__}...")
+            features = d.df_featurized[d.df_featurized.index.isin(results_df.index)]
+            print(f"Found {features.shape} features.")
+            featurized_results_df = pd.concat(
+                [
+                    featurized_results_df,
+                    features,
+                ]
+            )
+            target_df = pd.concat([target_df, d.df_targets.loc[target_df.index]])
+
+        print(
+            f"Gathered {featurized_results_df.shape} features for {results_df.shape} results."
+        )
+
+        return featurized_results_df, target_df
+
+    def gather_results(self, epoch_index: int) -> pd.DataFrame:
         """Gather results from the calculations in the epoch dir.
+
+        Any folder that is written inside the `calcs` dir will be treated
+        as a selected calculation. This means that auxiliary calculations
+        that were not automatically selected can also be provided to the model
+        at the next training run.
 
         Returns the featurized dataframe and results dataframe for the
         latest epoch of calcs.
@@ -350,29 +401,25 @@ class Campaign:
         """
         epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
         results = []
-        for calc in epoch_calc_dir.glob("[A-z,0-9]*.json"):
-            results.append(json.loads(calc.read_text()))
+        for calc_dir in epoch_calc_dir.glob("*"):
+            results_file = calc_dir / "result.json"
+            if results_file.exists():
+                results.append(json.loads(results_file.read_text()))
 
-        results_df = pd.DataFrame(results)
-        featurized_results_df = pd.DataFrame()
-        target_df = pd.DataFrame()
-        moddatas = [d.load().as_moddata() for d in self.datasets[1:]]
-        for row in results_df.iterrows():
-            for d in moddatas:
-                if row["id"] in d.featurized_df:
-                    featurized_results_df.append(d.featurized_df.loc[id])
-                    target_df.append(row)
-
-        assert isinstance(self.train_moddata, MODData)
-
-        return featurized_results_df, target_df
+        return pd.DataFrame(results).set_index("id")
 
     def update_training_moddata(self, featurized_results, target_results):
-        all_featurized_dfs = pd.concat(
-            self.train_moddata.df_featurized,
-            featurized_results,
+        print(
+            f"Updating training moddata... previously {self.train_moddata.df_featurized.shape}"
         )
-        all_targets = pd.concat(self.train_moddata.df_targets, target_results).values
+        all_featurized_dfs = pd.concat(
+            [self.train_moddata.df_featurized, featurized_results],
+            axis=1,
+        )
+        all_targets = pd.concat(
+            [self.train_moddata.df_targets, target_results], axis=1
+        ).values
+        print(f"Updated training moddata... now {all_featurized_dfs.shape}")
         return MODData(
             df_featurized=all_featurized_dfs,
             targets=all_targets,
@@ -388,9 +435,8 @@ class Campaign:
 
         """
 
-        epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
         while True:
-            if self._epoch_finished():
+            if self._epoch_finished(epoch_index):
                 return True
             if wait:
                 print(

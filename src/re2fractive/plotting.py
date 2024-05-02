@@ -9,13 +9,14 @@ from plotly.subplots import make_subplots
 def plot_design_space(
     campaign,
     aux: str = "band_gap",
+    show: bool = True,
 ):
     colours = px.colors.qualitative.Plotly
 
     point_colour = colours[0]
-    error_colour = colours[1]
     point_colour_2 = colours[2]
     point_colour_3 = colours[3]
+    point_colour_4 = colours[1]
 
     fig = go.Figure()
 
@@ -48,7 +49,7 @@ def plot_design_space(
             marker=dict(
                 size=5,
                 symbol="circle",
-                opacity=0.5,
+                opacity=0.1,
                 line=dict(width=1, color="DarkSlateGrey"),
                 color=point_colour,
             ),
@@ -60,6 +61,7 @@ def plot_design_space(
     top = 20
 
     epoch = campaign.epochs[-1]
+
     if len(campaign.datasets) > 1:
         for ind, d in enumerate(campaign.datasets[1:]):
             if isinstance(d, type):
@@ -92,12 +94,14 @@ def plot_design_space(
                             array=binned_std[top_bins],
                             visible=True,
                             color=colour,
+                            opacity=0.5,
+                            line=dict(width=0.5),
                         ),
                         mode="markers",
                         marker=dict(
                             size=5,
                             symbol="circle",
-                            opacity=0.8,
+                            opacity=0.5,
                             line=dict(width=1, color="DarkSlateGrey"),
                             color=colour,
                         ),
@@ -107,6 +111,28 @@ def plot_design_space(
                     ),
                 )
 
+    if epoch.get("selected"):
+        aux_name = aux
+        target_x = np.array([entry[aux_name] for entry in epoch["selected"]])
+        target_y = np.array([entry[target] for entry in epoch["selected"]])
+
+        fig.add_trace(
+            go.Scatter(
+                x=target_x,
+                y=target_y,
+                mode="markers",
+                marker=dict(
+                    size=10,
+                    symbol="star",
+                    opacity=1,
+                    line=dict(width=1, color="DarkSlateGrey"),
+                    color=point_colour_4,
+                ),
+                name="Selected by AL",
+                showlegend=True,
+            ),
+        )
+
     # Label axes
     fig.update_xaxes(title_text=f"{aux}")
     fig.update_yaxes(title_text=f"{target}")
@@ -114,7 +140,11 @@ def plot_design_space(
     # Start both axes at 0
     fig.update_xaxes(range=[0, None], zeroline=False)
     fig.update_yaxes(range=[0, None], zeroline=False)
-    fig.show()
+
+    if show:
+        fig.show()
+
+    return fig
 
 
 def parity_plot(
@@ -124,6 +154,7 @@ def parity_plot(
     x: pd.DataFrame | None = None,
     selected_df: pd.DataFrame | None = None,
     title: str = "Parity plot",
+    show: bool = True,
 ):
     """Make parity plots of model performance vs true values.
 
@@ -412,7 +443,10 @@ def parity_plot(
         title_text=f'{target.replace("_", " ").title()} prediction error', row=2, col=2
     )
 
-    fig.show()
+    if show:
+        fig.show()
+
+    return fig
 
 
 def compare_error_distributions(test_moddata, predictions_a, predictions_b):
