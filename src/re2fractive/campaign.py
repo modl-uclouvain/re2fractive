@@ -365,13 +365,16 @@ class Campaign:
         """
         featurized_results_df = pd.DataFrame()
         target_df = pd.DataFrame()
-        moddatas = [d.load().as_moddata() for d in self.datasets[1:]]
+        datasets = [d.load() for d in self.datasets[1:]]
 
         print("Gathering results")
-        for d in moddatas:
+        for d in datasets:
             # Collect the featurized data for the structures in the results
+            moddata = d.as_moddata()
             print(f"Gathering results from {d.__class__.__name__}...")
-            features = d.df_featurized[d.df_featurized.index.isin(results_df.index)]
+            features = moddata.df_featurized[
+                moddata.df_featurized.index.isin(results_df.index)
+            ]
             print(f"Found {features.shape} features.")
             featurized_results_df = pd.concat(
                 [
@@ -379,7 +382,8 @@ class Campaign:
                     features,
                 ]
             )
-            target_df = pd.concat([target_df, d.df_targets.loc[target_df.index]])
+            targets = results_df[results_df.index.isin(features.index)]
+            target_df = pd.concat([target_df, targets])
 
         print(
             f"Gathered {featurized_results_df.shape} features for {results_df.shape} results."
