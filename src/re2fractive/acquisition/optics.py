@@ -1,11 +1,35 @@
 """A place to collect optics-specific acquisition functions."""
 
 import numpy as np
-import random
-from re2fractive.acquisition.rppf import rppf_y
-
 from optimade.adapters import Structure
 
+
+def from_w_eff(
+    candidate_pool: list[Structure],
+    decorated_structures: list[Structure],
+    include_std: bool = False,
+    num_to_select: int = 1,
+    order="max",
+):
+    """Rank by Naccarato et al fit for w_eff."""
+    y = np.array([d["predictions"]["refractive_index"] for d in candidate_pool])
+    x = np.array([d["predictions"]["band_gap"] for d in candidate_pool])
+
+    w_eff = (((y**2) - 1) ** (1 / 3)) * (x + 6.74 + (-1.19 / x))
+
+    reverse = False
+    if order == "max":
+        reverse = True
+
+    sorted_pool = np.argsort(w_eff).tolist()
+    if reverse:
+        sorted_pool = reversed(sorted_pool)
+
+    selected = []
+    for _ in range(num_to_select):
+        idx = sorted_pool.pop()
+        selected.append(candidate_pool[idx])
+    return selected
 
 
 def fom_high_k_leakage(
@@ -40,10 +64,14 @@ def fom_high_k_leakage(
 
     return sorted(
         candidate_pool,
-        key=lambda s: (s["predictions"]["refractive_index"]**2
-        + s["predictions"].get("refractive_index_std", 0.0) * include_std)
-        * (s["predictions"]["band_gap"]
-        + s["predictions"].get("band_gap_std", 0.0) * include_std),
+        key=lambda s: (
+            s["predictions"]["refractive_index"] ** 2
+            + s["predictions"].get("refractive_index_std", 0.0) * include_std
+        )
+        * (
+            s["predictions"]["band_gap"]
+            + s["predictions"].get("band_gap_std", 0.0) * include_std
+        ),
         reverse=reverse,
     )[:num_to_select]
 
@@ -80,11 +108,13 @@ def fom_high_k_energy(
 
     return sorted(
         candidate_pool,
-        key=lambda s: (s["predictions"]["refractive_index"]**2
-        + s["predictions"].get("refractive_index_std", 0.0) * include_std)
-        * np.sqrt(s["predictions"]["band_gap"]
-        + s["predictions"].get("band_gap_std", 0.0) * include_std),
+        key=lambda s: (
+            s["predictions"]["refractive_index"] ** 2
+            + s["predictions"].get("refractive_index_std", 0.0) * include_std
+        )
+        * np.sqrt(
+            s["predictions"]["band_gap"]
+            + s["predictions"].get("band_gap_std", 0.0) * include_std
+        ),
         reverse=reverse,
     )[:num_to_select]
-
-
