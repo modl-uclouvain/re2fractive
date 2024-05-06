@@ -15,9 +15,10 @@ def fit_model(
     model_cls: type[EnsembleMODNetModel] = EnsembleMODNetModel,
     hyper_opt: bool = False,
     ensemble_n_models: int = 32,
-    ensemble_n_feat: int = 32,
-    ensemble_architecture: list[list[int]] = [[32], [16], [16], [8]],
+    ensemble_n_feat: int | None = None,
+    ensemble_architecture: list[list[int]] | None = None,
     n_jobs: int | None = None,
+    bootstrap: bool = True,
 ) -> tuple[EnsembleMODNetModel, int]:
     MODELS_DIR.mkdir(exist_ok=True, parents=True)
     existing_models = [int(m.name) for m in MODELS_DIR.glob("*")]
@@ -25,6 +26,12 @@ def fit_model(
     model_id: int = 1
     if existing_models:
         model_id = max(existing_models) + 1
+
+    if ensemble_n_feat is None:
+        ensemble_n_feat = 32
+
+    if ensemble_architecture is None:
+        ensemble_architecture = [[32], [16], [16], [8]]
 
     moddata = None
     if isinstance(dataset, Dataset):
@@ -39,7 +46,7 @@ def fit_model(
     if n_jobs is None:
         import multiprocessing as mp
 
-        n_jobs = min(2, mp.cpu_count() - 2)
+        n_jobs = max(2, mp.cpu_count() - 2)
 
     if hyper_opt:
         ga = FitGenetic(moddata)
@@ -49,7 +56,7 @@ def fit_model(
             nested=0,
             n_jobs=n_jobs,
             early_stopping=4,
-            refit=0,
+            refit=ensemble_n_models,
             fast=False,
         )
     else:
@@ -59,6 +66,7 @@ def fit_model(
             weights={t: 1.0 for t in list(moddata.target_names)},
             n_feat=ensemble_n_feat,
             num_neurons=ensemble_architecture,
+            bootstrap=bootstrap,
         )
 
         model.fit(moddata, n_jobs=n_jobs)
