@@ -10,28 +10,40 @@ def plot_design_space(
     campaign,
     aux: str = "band_gap",
     show: bool = True,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    title: str | None = None,
+    aux_bins: list[float] | None = None,
+    aux_top_n: int = 20,
+    dataset_labels: list[str] | None = None,
+    point_opacity: float = 0.5,
+    plot_predictions: bool = True,
+    plot_selections: bool = True,
+    plot_initial: bool = True,
+    plot_errors: bool = True,
+    w_eff_isobar: float | None = None,
 ):
-    colours = px.colors.qualitative.Plotly
+    colours = px.colors.qualitative.D3
 
     point_colour = colours[0]
-    point_colour_2 = colours[2]
-    point_colour_3 = colours[3]
-    point_colour_4 = colours[1]
-
     fig = go.Figure()
 
+    if title is None:
+        title = f"Design space after {len(campaign.epochs)} iteration(s)"
+    elif title == "":
+        title = None
     fig.update_layout(
         template="none",
         font_family="Arial",
-        width=1000,
-        height=800,
-        title=f"Design space after {len(campaign.epochs)} iteration(s)",
+        width=800,
+        height=600,
+        title=title,
     )
 
     # plot initial oracle set
     initial_dataset = campaign.datasets[0]
     if isinstance(initial_dataset, type):
-        initial_dataset = initial_dataset.load()
+        initial_dataset = initial_dataset.load()  # type: ignore
 
     target = next(iter(initial_dataset.targets))
 
@@ -41,101 +53,135 @@ def plot_design_space(
     target_y = [d.as_dict["attributes"][target_name] for d in initial_dataset.data]
     target_x = [d.as_dict["attributes"][aux_name] for d in initial_dataset.data]
 
-    fig.add_trace(
-        go.Scatter(
-            x=target_x,
-            y=target_y,
-            mode="markers",
-            marker=dict(
-                size=5,
-                symbol="circle",
-                opacity=0.1,
-                line=dict(width=1, color="DarkSlateGrey"),
-                color=point_colour,
-            ),
-            name=initial_dataset.__class__.__name__,
-        ),
-    )
+    if dataset_labels:
+        init_name = dataset_labels[0]
+    else:
+        init_name = initial_dataset.__class__.__name__
 
-    bins = np.arange(0, 15, step=0.5)
-    top = 20
-
-    epoch = campaign.epochs[-1]
-
-    if len(campaign.datasets) > 1:
-        for ind, d in enumerate(campaign.datasets[1:]):
-            if isinstance(d, type):
-                d = d.load()
-            aux_name = d.properties[aux]
-            design_x = np.array(
-                [entry.as_dict["attributes"][aux_name] for entry in d.data]
-            )
-            pred_y = np.array(epoch["design_space"]["predictions"][ind])
-            std_y = np.array(epoch["design_space"]["std_devs"][ind])
-
-            colour = [point_colour_2, point_colour_3][ind]
-
-            name = f"Predicted {d.__class__.__name__}"
-
-            for j, bin in enumerate(bins[:-1]):
-                binds = np.where((design_x > bin) & (design_x < bin + bins[j + 1]))
-                binned_y = pred_y[binds]
-                binned_x = design_x[binds]
-                binned_std = std_y[binds]
-
-                top_bins = np.argsort(binned_y)[len(binds) - top :]
-
-                fig.add_trace(
-                    go.Scatter(
-                        x=binned_x[top_bins],
-                        y=binned_y[top_bins],
-                        error_y=dict(
-                            type="data",
-                            array=binned_std[top_bins],
-                            visible=True,
-                            color=colour,
-                            opacity=0.5,
-                            line=dict(width=0.5),
-                        ),
-                        mode="markers",
-                        marker=dict(
-                            size=5,
-                            symbol="circle",
-                            opacity=0.5,
-                            line=dict(width=1, color="DarkSlateGrey"),
-                            color=colour,
-                        ),
-                        name=name,
-                        legendgroup=name,
-                        showlegend=(j == 0),
-                    ),
-                )
-
-    if epoch.get("selected"):
-        aux_name = aux
-        target_x = np.array([entry[aux_name] for entry in epoch["selected"]])
-        target_y = np.array([entry[target] for entry in epoch["selected"]])
-
+    if plot_initial:
         fig.add_trace(
             go.Scatter(
                 x=target_x,
                 y=target_y,
                 mode="markers",
                 marker=dict(
-                    size=10,
-                    symbol="star",
-                    opacity=1,
+                    size=5,
+                    symbol="circle",
+                    opacity=point_opacity,
                     line=dict(width=1, color="DarkSlateGrey"),
-                    color=point_colour_4,
+                    color=point_colour,
                 ),
-                name="Selected by AL",
-                showlegend=True,
+                name=init_name,
             ),
         )
 
+    epoch = campaign.epochs[-1]
+
+    if plot_predictions:
+        if aux_bins is None:
+            bins = np.arange(0, 15, step=0.5)
+        else:
+            bins = aux_bins
+
+        if len(campaign.datasets) > 1:
+            for ind, d in enumerate(campaign.datasets[1:]):
+                if isinstance(d, type):
+                    d = d.load()  # type: ignore
+                aux_name = d.properties[aux]
+                design_x = np.array(
+                    [entry.as_dict["attributes"][aux_name] for entry in d.data]
+                )
+                pred_y = np.array(epoch["design_space"]["predictions"][ind])
+                std_y = np.array(epoch["design_space"]["std_devs"][ind])
+
+                colour = colours[3:][ind]
+
+                if dataset_labels:
+                    name = dataset_labels[ind + 1]
+                else:
+                    name = f"Predicted {d.__class__.__name__}"
+
+                for j, bin in enumerate(bins[:-1]):
+                    binds = np.where((design_x > bin) & (design_x < bin + bins[j + 1]))
+                    binned_y = pred_y[binds]
+                    binned_x = design_x[binds]
+                    binned_std = std_y[binds]
+
+                    top_bins = np.argsort(binned_y)[len(binds) - aux_top_n :]
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=binned_x[top_bins],
+                            y=binned_y[top_bins],
+                            opacity=point_opacity,
+                            error_y=dict(
+                                type="data",
+                                array=binned_std[top_bins],
+                                visible=plot_errors,
+                                color=colour,
+                            ),
+                            mode="markers",
+                            marker=dict(
+                                size=5,
+                                symbol="circle",
+                                opacity=point_opacity,
+                                # line=dict(width=1, color="DarkSlateGrey"),
+                                color=colour,
+                            ),
+                            name=name,
+                            legendgroup=name,
+                            showlegend=(j == 0),
+                        ),
+                    )
+
+    if plot_selections:
+        for j, epoch in enumerate(campaign.epochs[1:]):
+            if epoch.get("selected"):
+                aux_name = aux
+                target_x = np.array([entry[aux_name] for entry in epoch["selected"]])
+                target_y = np.array([entry[target] for entry in epoch["selected"]])
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=target_x,
+                        y=target_y,
+                        mode="markers",
+                        marker=dict(
+                            size=5,
+                            symbol="circle",
+                            opacity=0.8,
+                            line=dict(width=1, color="DarkSlateGrey"),
+                            color=colours[2],
+                        ),
+                        name="Selected by AL",
+                        legendgroup="Selected by AL",
+                        showlegend=(j == 0),
+                    ),
+                )
+
+    if w_eff_isobar is not None:
+        gaps = np.linspace(0.1, 12, 100)
+        alpha = 6.74
+        beta = -1.19
+        ys = np.sqrt(1 + w_eff_isobar**3 / (gaps + alpha + beta / gaps) ** 3)
+        fig.add_trace(
+            go.Scatter(
+                x=gaps,
+                y=ys,
+                mode="lines",
+                line=dict(color="DarkSlateGrey", dash="dash"),
+                showlegend=True,
+                name=r"$\omega_\text{eff}=16\text{ eV}$",
+            )
+        )
+
     # Label axes
-    fig.update_xaxes(title_text=f"{aux}")
-    fig.update_yaxes(title_text=f"{target}")
+    if x_label is None:
+        x_label = aux
+    if y_label is None:
+        y_label = target
+    fig.update_xaxes(title_text=str(x_label))
+    fig.update_yaxes(title_text=str(y_label))
 
     # Start both axes at 0
     fig.update_xaxes(range=[0, None], zeroline=False)
@@ -167,7 +213,7 @@ def parity_plot(
         title: Title of the plot.
 
     """
-    colours = px.colors.qualitative.Plotly
+    colours = px.colors.qualitative.D3
 
     point_colour = colours[0]
     error_colour = colours[1]
