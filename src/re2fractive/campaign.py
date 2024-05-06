@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from pprint import pprint
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 import pandas as pd
 from jobflow import Maker
@@ -54,6 +54,39 @@ class LearningStrategy:
     """The minimum number of data points required between full
     hyperparameter optimisation runs.
     """
+
+    feature_select_strategy: Literal["once", "always"] = field(default="once")
+    """Whether to perform feature selection on the datasets at each epoch, or just the first."""
+
+    max_n_features: int | None = None
+    """An upper bound to add to the number of features that can be used in the model."""
+
+    model_n_jobs: int | None = None
+    """The number of processes to use when training models."""
+
+    hyperopt_always: bool = field(default=True)
+    """Whether to run hyperparameter optimisation on every model refit."""
+
+    hyperopt_strategy: Literal["once", "never", "always"] = field(default="always")
+    """The strategy to use for hyperparameter optimisation.
+
+        - If 'once', hyperparameter optimisation will be run once at the start of the campaign.
+        - If 'never', hyperparameter optimisation will never be run, instead using the default parameters specified here.
+        - If 'always', hyperparameter optimisation will be run on every model refit.
+
+    """
+
+    bootstrap: bool = field(default=True)
+    """Whether to bootstrap sample the datasets when using an EnsembleMODnetModel."""
+
+    ensemble_n_models: int = field(default=32)
+    """How many models to train in each ensemble."""
+
+    ensemble_n_feat: int | None = None
+    """The number of features to use in each ensemble (ignored when doing hyperparameter optimisation)."""
+
+    ensemble_architecture: list[list[int]] | None = None
+    """The architecture of the ensemble model to use (ignored when doing hyperparameter optimisation)."""
 
 
 Oracle: TypeAlias = Callable | Maker
@@ -128,6 +161,8 @@ class Campaign:
         cls,
         initial_dataset: Dataset | type[Dataset],
         datasets: list[type[Dataset]] | None = None,
+        oracles: dict[str, Oracle] | None = None,
+        learning_strategy: LearningStrategy = LearningStrategy(),
     ):
         from re2fractive import CAMPAIGN_ID
 
@@ -143,9 +178,10 @@ class Campaign:
         assert isinstance(initial_dataset, Dataset)
         assert initial_dataset is not None
         return cls(
-            oracles=[],
+            oracles=oracles if oracles is not None else [],  # type:ignore
             properties=list(initial_dataset.properties.keys()),
             model_cls=EnsembleMODNetModel,
+            learning_strategy=learning_strategy,
             datasets=[type(initial_dataset)] + datasets
             if datasets
             else [type(initial_dataset)],
@@ -163,7 +199,17 @@ class Campaign:
         """
 
         initial_dataset = self.datasets[0].load()
-        initial_dataset.featurize_dataset(self.featurizer)
+        initial_dataset.featurize_dataset(
+            self.featurizer,
+            feature_select=True,
+            max_n_features=self.learning_strategy.max_n_features,
+        )
+
+        # featurize other datasets
+        if len(self.datasets) > 1:
+            for d in self.datasets[1:]:
+                d = d.load()
+                d.featurize_dataset(self.featurizer, feature_select=False)
 
         train_inds, test_inds = train_test_split(
             range(len(initial_dataset)),
@@ -204,10 +250,21 @@ class Campaign:
         if model_id is not None:
             model = load_model(model_id)
         else:
-            model, model_id = fit_model(self.train_moddata)
+            print("Fitting new model")
+            model, model_id = fit_model(
+                self.train_moddata,
+                n_jobs=self.learning_strategy.model_n_jobs,
+                bootstrap=self.learning_strategy.bootstrap,
+                hyper_opt=self.learning_strategy.hyperopt_always,
+                ensemble_n_models=self.learning_strategy.ensemble_n_models,
+                ensemble_n_feat=self.learning_strategy.ensemble_n_feat,
+                ensemble_architecture=self.learning_strategy.ensemble_architecture,
+            )
 
+        print(f"Evaluating global holdout {model_id=}")
         _, _, _, metrics, _ = self.evaluate_global_holdout(model)
 
+        print(f"Evaluating design space with {model_id=}")
         predictions, std_devs = self.evaluate_design_space(model)
 
         return model_id, metrics, (predictions, std_devs)
@@ -250,7 +307,7 @@ class Campaign:
         holdout_set = initial_dataset.as_moddata().from_indices(self._holdout_inds)
 
         preds, stds = model.predict(
-            holdout_set, return_unc=True, remap_out_of_bounds=False
+            holdout_set, return_unc=True, remap_out_of_bounds=True
         )
 
         errors = holdout_set.df_targets - preds
@@ -260,6 +317,7 @@ class Campaign:
             "mean_uncertainty": float(stds.mean().values[0]),
         }
 
+        print("Holdout set metrics:")
         pprint(metrics)
 
         return preds, errors, stds, metrics, holdout_set
@@ -277,8 +335,9 @@ class Campaign:
         std_devs = []
 
         for d in design_spaces:
+            print(f"Evaluating {d.__class__.__name__}")
             preds, stds = model.predict(
-                d.as_moddata(), return_unc=True, remap_out_of_bounds=False
+                d.as_moddata(), return_unc=True, remap_out_of_bounds=True
             )
 
             predictions.append(preds.values.flatten().tolist())
@@ -303,23 +362,28 @@ class Campaign:
             return self.first_step()
 
         # Check whether an epoch was submitted previously, load from it if so
-        this_epoch_index: int = max([int(d.name) for d in EPOCHS_DIR.glob("*")])
+        # Find only epochs that have a campaign.pkl
+        this_epoch_index: int = max(
+            [int(d.parent.name) for d in EPOCHS_DIR.glob("*/campaign.pkl")]
+        )
 
         # If campaign.pkl exists, this epoch is already run
         if (EPOCHS_DIR / str(this_epoch_index) / "campaign.pkl").exists():
             this_epoch_index += 1
             self.start_new_epoch()
 
+        print(f"Polling epoch {this_epoch_index}")
         self.poll_epoch(this_epoch_index, wait=wait)
 
+        print(f"Gathering results for epoch {this_epoch_index}")
         results_df = self.gather_results(this_epoch_index)
 
-        featurized_df, _ = self.gather_features(results_df)
-        self.update_training_moddata(featurized_df, results_df)
+        print(f"Gathering features for epoch {this_epoch_index}")
+        featurized_df, target_df = self.gather_features(results_df)
+        self.update_training_moddata(featurized_df, target_df)
 
-        model_id, holdout_metrics, design_space = self.learn_and_evaluate(
-            self.train_moddata,
-        )
+        print(f"Retraining model for {this_epoch_index}")
+        model_id, holdout_metrics, design_space = self.learn_and_evaluate()
         self.finalize_epoch(holdout_metrics, model_id, design_space, results_df)
 
     def start_new_epoch(self):
@@ -336,6 +400,7 @@ class Campaign:
         if not epoch_calc_dir.exists():
             return False
 
+        print(f"Found calc dir for epoch {epoch_index}")
         return True
 
         # For now, we assume that all calculations are finished as we are
@@ -382,8 +447,9 @@ class Campaign:
                     features,
                 ]
             )
-            targets = results_df[results_df.index.isin(features.index)]
-            target_df = pd.concat([target_df, targets])
+            target_df = pd.concat(
+                [target_df, results_df[results_df.index.isin(features.index)]]
+            )
 
         print(
             f"Gathered {featurized_results_df.shape} features for {results_df.shape} results."
@@ -418,18 +484,26 @@ class Campaign:
         )
         all_featurized_dfs = pd.concat(
             [self.train_moddata.df_featurized, featurized_results],
-            axis=1,
         )
-        all_targets = pd.concat(
-            [self.train_moddata.df_targets, target_results], axis=1
-        ).values
+        all_targets = pd.concat([self.train_moddata.df_targets, target_results])[
+            self.datasets[0].targets
+        ].values
         print(f"Updated training moddata... now {all_featurized_dfs.shape}")
-        return MODData(
+        moddata = MODData(
             df_featurized=all_featurized_dfs,
             targets=all_targets,
             target_names=self.train_moddata.target_names,
             structure_ids=all_featurized_dfs.index.values,
         )
+
+        if self.learning_strategy.feature_select_strategy == "always":
+            print("Redoing feature selection according to strategy...")
+            n = self.learning_strategy.max_n_features
+            if n is None:
+                n = -1
+            moddata.feature_selection(n=n, drop_thr=0.05)
+
+        return moddata
 
     def poll_epoch(self, epoch_index: int, wait: bool = True) -> bool:
         """Look up in the calculations list whether this calcs of this
