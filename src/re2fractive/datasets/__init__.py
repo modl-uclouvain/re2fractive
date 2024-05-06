@@ -99,7 +99,7 @@ class Dataset(abc.ABC):
             materials=self.structure_df["structure"].values,
             targets=self.property_df[targets].values if targets is not None else None,
             structure_ids=list(self.as_df.index),
-            target_names=targets,
+            target_names=[targets] if targets is not None else None,
             df_featurized=df_featurized,
             featurizer=featurizer,
         )
@@ -117,14 +117,12 @@ class Dataset(abc.ABC):
         featurizer: BatchableMODFeaturizer | type[BatchableMODFeaturizer],
         feature_select: bool = True,
         overwrite: bool = False,
+        max_n_features: int | None = None,
     ):
         """Featurize a dataset using a given featurizer."""
-        if not isinstance(featurizer, BatchableMODFeaturizer):
-            featurizer = featurizer()
 
         pkl_filename = (
-            FEATURES_DIR
-            / f"{self.id}/{self.id}-{featurizer.__class__.__name__}-featurized.pkl"
+            FEATURES_DIR / f"{self.id}/{self.id}-{featurizer.__name__}-featurized.pkl"
         )
 
         if pkl_filename.exists():
@@ -133,14 +131,21 @@ class Dataset(abc.ABC):
             else:
                 return pd.read_pickle(pkl_filename)
 
-        featurizer.batch_size = len(self) // 10
+        if not isinstance(featurizer, BatchableMODFeaturizer):
+            featurizer = featurizer()
+        print(
+            f"Featurizing {self.__class__.__name__} with {featurizer.__class__.__name__}"
+        )
+
         featurized_df = featurizer.featurize(self.structure_df)
 
         # If this dataset has a target, and it is requested, do feature selection and reorder the df
         # before saving
         if feature_select and self.targets:
+            if max_n_features is None:
+                max_n_features = -1
             moddata = self.as_moddata(feature_store=featurized_df)
-            moddata.feature_selection(n=-1, drop_thr=0.05)
+            moddata.feature_selection(n=max_n_features, drop_thr=0.05)
             featurized_df.attrs["feature_selected"] = True
             featurized_df.attrs["optimal_features_by_target"] = (
                 moddata.optimal_features_by_target
