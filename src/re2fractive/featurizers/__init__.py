@@ -1,8 +1,10 @@
 import contextlib
+import warnings
 
 import modnet.featurizers
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 from re2fractive import SCRATCH_DIR
 
@@ -14,6 +16,8 @@ class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
 
     batch_size: int | None = 1000
     batch_dir: str | None = None
+    featurizer_mode: str = "single"
+    _n_jobs: int = 1
 
     def featurize(self, df):
         """Featurizes a dataframe containing compositions, structures, and sites.
@@ -35,7 +39,9 @@ class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
 
         batch_dfs = []
 
-        for ind in range(1 + (len(df) // batch_size)):
+        for ind in tqdm(
+            range(1 + (len(df) // batch_size)), desc="Featurizing...", ncols=50
+        ):
             batch_file = (
                 SCRATCH_DIR / f"{self.__class__.__name__}-batch_{ind}-{batch_size}.pkl"
             )
@@ -45,7 +51,9 @@ class BatchableMODFeaturizer(modnet.featurizers.MODFeaturizer):
             batch_min = ind * batch_size
             batch_max = min((ind + 1) * batch_size, len(df))
             df_batch = df.iloc[batch_min:batch_max]
-            df_featurized_batch = super().featurize(df_batch)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                df_featurized_batch = super().featurize(df_batch)
             batch_file.parent.mkdir(parents=True, exist_ok=True)
             df_featurized_batch.to_pickle(batch_file)
             batch_dfs.append(df_featurized_batch)
