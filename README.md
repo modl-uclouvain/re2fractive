@@ -1,12 +1,16 @@
 # re<sup>2</sup>fractive
 
-The aim of this project is to design and discover materials with high refractive indices by exploiting new and existing databases, machine learning predictions and high-throughtput DFT calculations, all within a dynamic active learning framework.
+The aim of this project is to design and discover materials with high refractive indices by exploiting new and existing databases, machine learning predictions (via [MODNet](https://github.com/modl-uclouvain/modnet)) and high-throughtput DFT calculations (via [atomate2](https://github.com/materialsproject/atomate2) and [jobflow-remote](https://github.com/matgenix/jobflow-remote), all within a dynamic active learning framework.
+
+This repository contains a Python package, `re2fractive` that implements some of
+this functionality, with the aim to grow it to a generic package for other
+properties.
 
 This repository accompanies the preprint:
 
 > V. Trinquet, M. L. Evans, C. Hargreaves, P-P. De Breuck, G-M. Rignanese, "Optical materials discovery and design with federated databases and machine learning" (2024).
 
-The active learning campaign described their can be repeated with:
+The active learning campaign described there can be repeated with:
 
 ```python
 from re2fractive.campaign import Campaign, LearningStrategy
@@ -27,12 +31,10 @@ campaign = Campaign.new_campaign_from_dataset(
 campaign.run(epochs=8)
 ```
 
-
-
-![[](img/flow.svg)](img/flow.svg)
-
 Some functionality is still missing from the first public release:
 
 - [ ] Direct integration with atomate2/jobflow-remote workflows for automatic
   job submission after candidate selection.
 - [ ] Automatic selection according to custom acquisition functions.
+
+![[](img/flow.svg)](img/flow.svg)
