@@ -121,11 +121,31 @@ def plot_design_space(
                                 color=colour,
                             ),
                             mode="markers",
+                            zorder=0,
+                            marker=dict(
+                                size=0,
+                                symbol="circle",
+                                opacity=point_opacity,
+                                line=dict(width=1, color="DarkSlateGrey"),
+                                color=colour,
+                            ),
+                            name=name,
+                            legendgroup=name,
+                            showlegend=False,
+                        ),
+                    )
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=binned_x[top_bins],
+                            y=binned_y[top_bins],
+                            opacity=point_opacity,
+                            mode="markers",
                             marker=dict(
                                 size=5,
                                 symbol="circle",
                                 opacity=point_opacity,
-                                # line=dict(width=1, color="DarkSlateGrey"),
+                                line=dict(width=1, color="DarkSlateGrey"),
                                 color=colour,
                             ),
                             name=name,
@@ -169,7 +189,7 @@ def plot_design_space(
                 x=gaps,
                 y=ys,
                 mode="lines",
-                line=dict(color="DarkSlateGrey", dash="dash"),
+                line=dict(color=colours[1], dash="dash"),
                 showlegend=True,
                 name=r"$\omega_\text{eff}=16\text{ eV}$",
             )
