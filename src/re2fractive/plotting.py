@@ -6,6 +6,10 @@ from modnet.preprocessing import MODData
 from plotly.subplots import make_subplots
 
 
+def plot_al_errors(campaign, show: bool = True):
+    pass
+
+
 def plot_design_space(
     campaign,
     aux: str = "band_gap",
@@ -91,8 +95,8 @@ def plot_design_space(
                 design_x = np.array(
                     [entry.as_dict["attributes"][aux_name] for entry in d.data]
                 )
-                pred_y = np.array(epoch["design_space"]["predictions"][ind])
-                std_y = np.array(epoch["design_space"]["std_devs"][ind])
+                pred_y = np.array(epoch["design_space"][ind][target][ind])
+                std_y = np.array(epoch["design_space"][target + "_std"][ind])
 
                 colour = colours[3:][ind]
 

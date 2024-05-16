@@ -22,6 +22,7 @@ from sklearn.model_selection import train_test_split
 
 from re2fractive import EPOCHS_DIR
 from re2fractive.acquisition import extremise_expected_value, random_selection
+from re2fractive.acquisition.optics import from_w_eff
 from re2fractive.datasets import Dataset
 from re2fractive.featurizers import BatchableMODFeaturizer, MatminerFastFeaturizer
 from re2fractive.models import fit_model, load_model
@@ -29,13 +30,34 @@ from re2fractive.models import fit_model, load_model
 
 @dataclass
 class CampaignLogistics:
+    """A collection of settings related to deploying the campaign."""
+
     local: bool = True
     jfr_project: str | None = None
     jfr_preferred_worker: str | None = None
 
 
 @dataclass
+class Epoch:
+    """A container for the results from each epoch."""
+
+    model_metrics: dict = field(default_factory=dict)
+    """The metrics of the model on the holdout set."""
+
+    model_id: int | None = None
+    """The ID of the model that was trained in this epoch."""
+
+    design_space: list[pd.DataFrame] | None = None
+    """The design space that was evaluated in this epoch."""
+
+    selected: pd.DataFrame | None = None
+    """The selected results from the design space at this epoch."""
+
+
+@dataclass
 class LearningStrategy:
+    """A collection of settings that define the active learning strategy for the campaign."""
+
     initial_val_fraction: float = field(default=0.2)
     """The fraction of the initial dataset to use as a holdout set throughout."""
 
@@ -88,12 +110,25 @@ class LearningStrategy:
     ensemble_architecture: list[list[int]] | None = None
     """The architecture of the ensemble model to use (ignored when doing hyperparameter optimisation)."""
 
+    acquisition_function: Callable = from_w_eff
+    """The acquisition function to use for selecting new trials.
+    Will receive a list of dataframes of the design space, and
+    is expected to return a subset or sorted dataframe of the
+    materials to select.
+
+    """
+
 
 Oracle: TypeAlias = Callable | Maker
 
 
 @dataclass
 class Campaign:
+    """The container class for the active learning campaign that stores
+    references to results and the current state of the campaign.
+
+    """
+
     oracles: list[tuple[tuple[str, ...], Oracle]]
     """A list of oracles that can be evaluated to obtain the 'ground truth', and
     the associated properites they can compute.
@@ -128,12 +163,6 @@ class Campaign:
     models: list = field(default_factory=list)
     """A list of models that have been trained so far."""
 
-    # drop_initial_cols: list[str] | None = None
-    # """For testing, drop this column from the initial dataset."""
-
-    # initial_model: MODNetModel | None = None
-    # """An initial model to use to generate the first round of predictions."""
-
     explore_acquisition_function: Callable = random_selection
     """An explore-stage acqusition function that can e.g., weight
     property uncertainty vs. constraints to improve model performance
@@ -144,7 +173,7 @@ class Campaign:
     """An exploit-stage acqusition function that defines the desired
     screening wrt. final constraints and optimisation targets. """
 
-    epochs: list[dict] = field(default_factory=list)
+    epochs: list[Epoch] = field(default_factory=list)
     """A container that stores the epochs that have already been run."""
 
     train_moddata: MODData = None
@@ -164,6 +193,7 @@ class Campaign:
         oracles: dict[str, Oracle] | None = None,
         learning_strategy: LearningStrategy = LearningStrategy(),
     ):
+        """Initialise a new campaign from some given datasets."""
         from re2fractive import CAMPAIGN_ID
 
         if CAMPAIGN_ID is not None:
@@ -225,7 +255,7 @@ class Campaign:
             (train_inds, test_inds)
         )
         model_id, holdout_metrics, design_space = self.learn_and_evaluate(
-            model_id=model_id
+            model_id=1,
         )
 
         self.finalize_epoch(holdout_metrics, model_id, design_space)
@@ -234,11 +264,8 @@ class Campaign:
         epoch = {
             "model_metrics": holdout_metrics,
             "model_id": model_id,
-            "design_space": {
-                "predictions": design_space[0],
-                "std_devs": design_space[1],
-            },
-            "selected": results_df.to_dict(orient="row")
+            "design_space": [d.to_dict(orient="index") for d in design_space],
+            "selected": results_df.to_dict(orient="index")
             if results_df is not None
             else None,
         }
@@ -322,28 +349,31 @@ class Campaign:
 
         return preds, errors, stds, metrics, holdout_set
 
-    def evaluate_design_space(self, model: EnsembleMODNetModel):
+    def evaluate_design_space(self, model: EnsembleMODNetModel) -> list[pd.DataFrame]:
         """Make predictions with a given model on the design space
         of the remaining datasets.
+
+        Returns a list of dataframes, each containing the predictions
+        for each dataset.
 
         """
         if len(self.datasets) <= 1:
             raise RuntimeError("No datasets left to evaluate.")
         design_spaces = [d.load() for d in self.datasets[1:]]
 
-        predictions = []
-        std_devs = []
+        results = []
 
         for d in design_spaces:
             print(f"Evaluating {d.__class__.__name__}")
             preds, stds = model.predict(
                 d.as_moddata(), return_unc=True, remap_out_of_bounds=True
             )
+            col = stds.columns[0]
+            stds.rename(columns={col: f"{col}_std"}, inplace=True)
 
-            predictions.append(preds.values.flatten().tolist())
-            std_devs.append(stds.values.flatten().tolist())
+            results.append(pd.concat([preds, stds], axis=1))
 
-        return predictions, std_devs
+        return results
 
     def march(self, wait: bool = True):
         """Marches the campaign forward through the next step, based on the current state.
@@ -383,13 +413,14 @@ class Campaign:
         self.update_training_moddata(featurized_df, target_df)
 
         print(f"Retraining model for {this_epoch_index}")
-        model_id, holdout_metrics, design_space = self.learn_and_evaluate()
+        model_id, holdout_metrics, design_space = self.learn_and_evaluate(
+            model_id=this_epoch_index
+        )
         self.finalize_epoch(holdout_metrics, model_id, design_space, results_df)
 
     def start_new_epoch(self):
-        pass
-        # design_space = self.epochs[-1]["design_space"]
-        # ranking = self.make_selection(design_space)
+        design_space = self.epochs[-1]["design_space"]
+        ranking = self.make_selection(design_space)
 
         # # Submit or get pre-computed trials from database
         # new_calcs = self.submit_oracle(ranking)
@@ -529,5 +560,4 @@ class Campaign:
                 return False
 
     def make_selection(self, design_space):
-        ranking = self.acquisition_function(design_space)
-        return ranking
+        return self.learning_strategy.acquisition_function(design_space)
