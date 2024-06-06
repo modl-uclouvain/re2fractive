@@ -8,7 +8,7 @@ properties.
 
 This repository accompanies the preprint:
 
-> V. Trinquet, M. L. Evans, C. Hargreaves, P-P. De Breuck, G-M. Rignanese, "Optical materials discovery and design with federated databases and machine learning" (2024).
+> V. Trinquet, M. L. Evans, C. Hargreaves, P-P. De Breuck, G-M. Rignanese, "Optical materials discovery and design with federated databases and machine learning" (2024) DOI: [10.48550/arXiv.2405.11393](https://doi.org/10.48550/arXiv.2405.11393).
 
 The active learning campaign described there can be repeated with:
 
