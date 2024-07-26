@@ -8,9 +8,10 @@ properties.
 
 This repository accompanies the preprint:
 
-> V. Trinquet, M. L. Evans, C. Hargreaves, P-P. De Breuck, G-M. Rignanese, "Optical materials discovery and design with federated databases and machine learning" (2024) DOI: [10.48550/arXiv.2405.11393](https://doi.org/10.48550/arXiv.2405.11393).
+> V. Trinquet, M. L. Evans, C. Hargreaves, P-P. De Breuck, G-M. Rignanese, "Optical materials discovery and design with federated databases and machine learning", *Faraday Discussions* (2024) DOI: [10.1039/D4FD00092G](https://doi.org/10.1039/D4FD00092G) (preprint: [10.48550/arXiv.2405.11393](https://doi.org/10.48550/arXiv.2405.11393)).
 
-The active learning campaign described there can be repeated with:
+The active learning campaign described there can be repeated (modulo some
+details around atomate2 & jobflow-remote setup) with:
 
 ```python
 from re2fractive.campaign import Campaign, LearningStrategy
