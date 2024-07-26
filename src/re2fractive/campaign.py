@@ -499,7 +499,7 @@ class Campaign:
 
         return featurized_results_df, target_df
 
-    def gather_results(self, epoch_index: int) -> pd.DataFrame:
+    def gather_results(self, epoch_index: int) -> pd.DataFrame | None:
         """Gather results from the calculations in the epoch dir.
 
         Any folder that is written inside the `calcs` dir will be treated
@@ -507,8 +507,7 @@ class Campaign:
         that were not automatically selected can also be provided to the model
         at the next training run.
 
-        Returns the featurized dataframe and results dataframe for the
-        latest epoch of calcs.
+        Returns the results dataframe for the chosen epoch of calcs, if it exists.
 
         """
         epoch_calc_dir = EPOCHS_DIR / str(epoch_index) / "calcs"
@@ -517,6 +516,9 @@ class Campaign:
             results_file = calc_dir / "result.json"
             if results_file.exists():
                 results.append(json.loads(results_file.read_text()))
+
+        if not results:
+            return None
 
         return pd.DataFrame(results).set_index("id")
 
@@ -569,6 +571,41 @@ class Campaign:
                     f"{datetime.datetime.now()} -- epoch {epoch_index} not yet finished, exiting..."
                 )
                 return False
+
+    def parcel_up_structures(self):
+        """Saves all of the structures used in the campaign to a folder of CIF files,
+        with associated .csv containing any computed properties.
+
+        """
+        results = []
+        for epoch_ind, epoch in enumerate(self.epochs):
+            r = self.gather_results(epoch_ind)
+            if r is not None:
+                results.append(r)
+
+        pd.concat(results).to_csv("results.csv")
+
+        print("Loading datasets...")
+        for ind, dataset in enumerate(self.datasets):
+            self.datasets[ind] = dataset.load()
+
+        for epoch in results:
+            for i, row in epoch.iterrows():
+                structure = None
+                for dataset in self.datasets:
+                    # find structure
+                    try:
+                        structure = dataset.structure_df.iloc[row["id"]]["structure"]
+                    except Exception:
+                        continue
+
+                if not structure:
+                    raise RuntimeError(f"Bad structure: {row['id']}")
+
+                id = row["id"].split("/")[-1]
+                structure.to(filename=f"{id}.cif")
+
+        return results
 
     def make_selection(self, design_space):
         return self.learning_strategy.acquisition_function(design_space)
