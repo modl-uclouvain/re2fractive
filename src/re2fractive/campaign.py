@@ -20,7 +20,7 @@ from modnet.models import EnsembleMODNetModel, MODNetModel
 from modnet.preprocessing import MODData
 from sklearn.model_selection import train_test_split
 
-from re2fractive import EPOCHS_DIR
+from re2fractive import EPOCHS_DIR, RESULTS_DIR
 from re2fractive.acquisition import extremise_expected_value, random_selection
 from re2fractive.acquisition.optics import from_w_eff
 from re2fractive.datasets import Dataset
@@ -572,18 +572,27 @@ class Campaign:
                 )
                 return False
 
-    def parcel_up_structures(self):
+    def parcel_up_structures(self) -> None:
         """Saves all of the structures used in the campaign to a folder of CIF files,
         with associated .csv containing any computed properties.
 
         """
+
+        from optimade.adapters.structures import Structure
+
+        if not RESULTS_DIR.exists():
+            RESULTS_DIR.mkdir()
+
+        if not (RESULTS_DIR / "structures").exists():
+            (RESULTS_DIR / "structures").mkdir()
+
         results = []
         for epoch_ind, epoch in enumerate(self.epochs):
             r = self.gather_results(epoch_ind)
             if r is not None:
                 results.append(r)
 
-        pd.concat(results).to_csv("results.csv")
+        pd.concat(results).to_csv(RESULTS_DIR / "results.csv")
 
         print("Loading datasets...")
         for ind, dataset in enumerate(self.datasets):
@@ -595,17 +604,21 @@ class Campaign:
                 for dataset in self.datasets:
                     # find structure
                     try:
-                        structure = dataset.structure_df.iloc[row["id"]]["structure"]
+                        structure = dataset.structure_df.loc[i]["structure"]
                     except Exception:
                         continue
 
                 if not structure:
-                    raise RuntimeError(f"Bad structure: {row['id']}")
+                    try:
+                        structure = Structure.from_url(i).as_pymatgen
+                    except Exception as e:
+                        print(
+                            f"Bad structure {i}: not in original dataset and entry download failed with message: {e}"
+                        )
+                        continue
 
-                id = row["id"].split("/")[-1]
-                structure.to(filename=f"{id}.cif")
-
-        return results
+                id = i.split("/")[-1]
+                structure.to(filename=RESULTS_DIR / "structures" / f"{id}.cif")
 
     def make_selection(self, design_space):
         return self.learning_strategy.acquisition_function(design_space)
