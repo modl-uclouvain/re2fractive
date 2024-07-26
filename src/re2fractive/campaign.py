@@ -375,7 +375,18 @@ class Campaign:
 
         return results
 
-    def march(self, wait: bool = True):
+    def run(self, epochs: int = 1, wait: bool = True) -> None:
+        """March the campaign for a number of epochs.
+
+        If wait is `True`, after potentially submitting calculations, this function will keep
+        polling the filesystem until they have been completed. If interrupted, re-running
+        the function will begin polling again.
+
+        """
+        for _ in range(epochs):
+            self.march(wait=wait)
+
+    def march(self, wait: bool = True) -> None:
         """Marches the campaign forward through the next step, based on the current state.
 
         Each epoch will *end* with the latest prediction of the design space. Each new epoch
