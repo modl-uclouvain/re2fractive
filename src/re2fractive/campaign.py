@@ -182,7 +182,7 @@ class Campaign:
     campaign_uuid: str | None = None
     """A UUID that uniquely identifies this campaign."""
 
-    featurizer: BatchableMODFeaturizer = field(default=MatminerFastFeaturizer)
+    featurizer: BatchableMODFeaturizer = field(default=MatminerFastFeaturizer)  # type: ignore[assignment]
     """The featurizer to use during learning."""
 
     @classmethod
@@ -212,9 +212,9 @@ class Campaign:
             properties=list(initial_dataset.properties.keys()),
             model_cls=EnsembleMODNetModel,
             learning_strategy=learning_strategy,
-            datasets=[type(initial_dataset)] + datasets
+            datasets=[type(initial_dataset)] + datasets  # type: ignore[arg-type]
             if datasets
-            else [type(initial_dataset)],
+            else [type(initial_dataset)],  # type: ignore[list-item]
             campaign_uuid=campaign_uuid,
         )
 
@@ -261,14 +261,16 @@ class Campaign:
         self.finalize_epoch(holdout_metrics, model_id, design_space)
 
     def finalize_epoch(self, holdout_metrics, model_id, design_space, results_df=None):
-        epoch = {
-            "model_metrics": holdout_metrics,
-            "model_id": model_id,
-            "design_space": [d.to_dict(orient="index") for d in design_space],
-            "selected": results_df.to_dict(orient="index")
-            if results_df is not None
-            else None,
-        }
+        epoch = Epoch(
+            **{
+                "model_metrics": holdout_metrics,
+                "model_id": model_id,
+                "design_space": [d.to_dict(orient="index") for d in design_space],
+                "selected": results_df.to_dict(orient="index")
+                if results_df is not None
+                else None,
+            }
+        )
 
         self.epochs.append(epoch)
         self.checkpoint()
@@ -418,6 +420,8 @@ class Campaign:
 
         print(f"Gathering results for epoch {this_epoch_index}")
         results_df = self.gather_results(this_epoch_index)
+        if results_df is None:
+            raise RuntimeError(f"No results found for epoch {this_epoch_index}")
 
         print(f"Gathering features for epoch {this_epoch_index}")
         featurized_df, target_df = self.gather_features(results_df)
@@ -430,11 +434,13 @@ class Campaign:
         self.finalize_epoch(holdout_metrics, model_id, design_space, results_df)
 
     def start_new_epoch(self):
-        design_space = self.epochs[-1]["design_space"]
-        ranking = self.make_selection(design_space)
+        raise NotImplementedError
 
-        # # Submit or get pre-computed trials from database
-        # new_calcs = self.submit_oracle(ranking)
+    #     design_space = self.epochs[-1]["design_space"]
+    # ranking = self.make_selection(design_space)
+
+    # # Submit or get pre-computed trials from database
+    # new_calcs = self.submit_oracle(ranking)
 
     def _epoch_finished(self, epoch_index: int) -> bool:
         """Check the epoch dir for results from all calculations."""
@@ -598,8 +604,8 @@ class Campaign:
         for ind, dataset in enumerate(self.datasets):
             self.datasets[ind] = dataset.load()
 
-        for epoch in results:
-            for i, row in epoch.iterrows():
+        for r in results:
+            for i, row in r.iterrows():
                 structure = None
                 for dataset in self.datasets:
                     # find structure

@@ -1,11 +1,11 @@
 """A place to collect generic acquisition functions."""
 
-import numpy as np
 import random
-from re2fractive.acquisition.rppf import rppf_y
 
+import numpy as np
 from optimade.adapters import Structure
 
+from re2fractive.acquisition.rppf import rppf_y
 
 
 def exploration(
@@ -101,12 +101,12 @@ def random_selection(
 def rppf(
     candidate_pool: list[Structure],
     decorated_structures: list[Structure],
-    properties: dict[str,str],
+    properties: dict[str, str],
     include_std: bool = False,
     num_to_select: int = 1,
-    rho:   float = 0.0,
-    wind:  float = 0.01,
-    Tstar: float = 0.01
+    rho: float = 0.0,
+    wind: float = 0.01,
+    Tstar: float = 0.01,
 ):
     """Returns the top `num_to_select` structures according to the Most Isolated Pareto structure Score (MIPS) calculated from projection free energy generalized to any dimension (number of properties). Does not take uncertainty into account. TODO maybe?
 
@@ -129,26 +129,29 @@ def rppf(
     orders = list(properties.values())
     for order in orders:
         if order not in ("max", "min"):
-            raise RuntimeError("The values of 'properties' must be either 'max' or 'min'")
+            raise RuntimeError(
+                "The values of 'properties' must be either 'max' or 'min'"
+            )
 
     # Replace max and min by 1 and -1 since rppf minimizes the objectives by default
-    properties_sign = {key: -1 if value == 'max' else 1 for key, value in properties.items()}
+    properties_sign = {
+        key: -1 if value == "max" else 1 for key, value in properties.items()
+    }
 
     y = np.empty((len(candidate_pool), len(properties_sign)))
     for i, s in enumerate(candidate_pool):
         for j, (key, value) in enumerate(properties_sign.items()):
-            y[i,j] = s["predictions"].get(key, 0.0) * value
+            y[i, j] = s["predictions"].get(key, 0.0) * value
             if include_std:
-                y[i,j] -= s["predictions"].get(f"{key}_std", 0.0)
-        
+                y[i, j] -= s["predictions"].get(f"{key}_std", 0.0)
 
     ranking_index, ranking_MIPS = rppf_y(y, rho=rho, wind=wind, Tstar=Tstar)
-    
+
     selected = []
     for count, idx in enumerate(ranking_index):
         selected.append(candidate_pool[idx])
         count += 1
-        if count==num_to_select:
+        if count == num_to_select:
             break
 
     return selected
