@@ -20,10 +20,10 @@ from modnet.models import EnsembleMODNetModel, MODNetModel
 from modnet.preprocessing import MODData
 from sklearn.model_selection import train_test_split
 
-from re2fractive import EPOCHS_DIR, RESULTS_DIR
 from re2fractive.acquisition import extremise_expected_value, random_selection
 from re2fractive.acquisition.optics import from_w_eff
 from re2fractive.datasets import Dataset
+from re2fractive.dirs import EPOCHS_DIR, RESULTS_DIR
 from re2fractive.featurizers import BatchableMODFeaturizer, MatminerFastFeaturizer
 from re2fractive.models import fit_model, load_model
 
@@ -52,6 +52,9 @@ class Epoch:
 
     selected: pd.DataFrame | None = None
     """The selected results from the design space at this epoch."""
+
+    def __repr__(self):
+        return f"Epoch {self.model_id}: {self.model_metrics}\nDesign space: {[df.shape for df in self.design_space] if self.design_space else ''}\nSelected: {self.selected.shape if self.selected is not None else ''}"
 
 
 @dataclass
@@ -160,9 +163,6 @@ class Campaign:
     learning_strategy: LearningStrategy = field(default_factory=LearningStrategy)
     """The active learning strategy to take for training the models."""
 
-    models: list = field(default_factory=list)
-    """A list of models that have been trained so far."""
-
     explore_acquisition_function: Callable = random_selection
     """An explore-stage acqusition function that can e.g., weight
     property uncertainty vs. constraints to improve model performance
@@ -194,7 +194,7 @@ class Campaign:
         learning_strategy: LearningStrategy = LearningStrategy(),
     ):
         """Initialise a new campaign from some given datasets."""
-        from re2fractive import CAMPAIGN_ID
+        from re2fractive.dirs import CAMPAIGN_ID
 
         if CAMPAIGN_ID is not None:
             campaign_uuid = CAMPAIGN_ID
@@ -410,37 +410,37 @@ class Campaign:
             [int(d.parent.name) for d in EPOCHS_DIR.glob("*/campaign.pkl")]
         )
 
-        # If campaign.pkl exists, this epoch is already run
-        if (EPOCHS_DIR / str(this_epoch_index) / "campaign.pkl").exists():
-            this_epoch_index += 1
-            self.start_new_epoch()
-
         print(f"Polling epoch {this_epoch_index}")
-        self.poll_epoch(this_epoch_index, wait=wait)
+        finished = self.poll_epoch(this_epoch_index, wait=wait)
+        if not finished:
+            raise RuntimeError("Epoch is still running.")
 
         print(f"Gathering results for epoch {this_epoch_index}")
         results_df = self.gather_results(this_epoch_index)
         if results_df is None:
             raise RuntimeError(f"No results found for epoch {this_epoch_index}")
 
-        print(f"Gathering features for epoch {this_epoch_index}")
+        print(f"Gathering features for epoch {this_epoch_index}...")
         featurized_df, target_df = self.gather_features(results_df)
         self.update_training_moddata(featurized_df, target_df)
 
-        print(f"Retraining model for {this_epoch_index}")
+        print(f"Retraining model for {this_epoch_index}...")
         model_id, holdout_metrics, design_space = self.learn_and_evaluate(
             model_id=this_epoch_index
         )
+
+        print(f"Finalizing epoch {this_epoch_index}...")
         self.finalize_epoch(holdout_metrics, model_id, design_space, results_df)
 
-    def start_new_epoch(self):
-        raise NotImplementedError
+        print(f"Selecting trial structures for next epoch {this_epoch_index}..")
+        self.select_from_design_space(design_space)
 
-    #     design_space = self.epochs[-1]["design_space"]
-    # ranking = self.make_selection(design_space)
+    def select_from_design_space(self, design_space):
+        breakpoint()
 
-    # # Submit or get pre-computed trials from database
-    # new_calcs = self.submit_oracle(ranking)
+    # def start_new_epoch(self):
+    #         design_space = self.epochs[-1]["design_space"]
+    # u       ranking = self.make_selection(design_space)
 
     def _epoch_finished(self, epoch_index: int) -> bool:
         """Check the epoch dir for results from all calculations."""
@@ -450,7 +450,6 @@ class Campaign:
 
         print(f"Found calc dir for epoch {epoch_index}")
         return True
-
         # For now, we assume that all calculations are finished as we are
         # manually populating the calcs dirs
 
@@ -628,3 +627,6 @@ class Campaign:
 
     def make_selection(self, design_space):
         return self.learning_strategy.acquisition_function(design_space)
+
+    def __repr__(self):
+        return f"Campaign: {self.campaign_uuid}\nEpochs: {len(self.epochs)}\nDatasets: {self.datasets}\nOracles: {self.oracles}\nProperties: {self.properties}"  # \nLast epoch: {self.epochs[-1] if self.epochs else None}"

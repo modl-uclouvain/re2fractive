@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from re2fractive import SCRATCH_DIR
+from re2fractive.dirs import SCRATCH_DIR
 
 __all__ = ["MatminerFastFeaturizer"]
 

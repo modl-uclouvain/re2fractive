@@ -14,7 +14,7 @@ from modnet.preprocessing import MODData
 from optimade.adapters.structures import Structure as OptimadeStructure
 from optimade.client import OptimadeClient
 
-from re2fractive import DATASETS_DIR, FEATURES_DIR
+from re2fractive.dirs import DATASETS_DIR, FEATURES_DIR
 from re2fractive.featurizers import BatchableMODFeaturizer
 
 
