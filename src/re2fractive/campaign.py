@@ -254,9 +254,7 @@ class Campaign:
         self.train_moddata, _ = initial_dataset.as_moddata().split(
             (train_inds, test_inds)
         )
-        model_id, holdout_metrics, design_space = self.learn_and_evaluate(
-            model_id=1,
-        )
+        model_id, holdout_metrics, design_space = self.learn_and_evaluate()
 
         self.finalize_epoch(holdout_metrics, model_id, design_space)
 
