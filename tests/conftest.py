@@ -9,9 +9,11 @@ def trial_dataset():
     from re2fractive.datasets import NaccaratoDataset
     from re2fractive.dirs import DATASETS_DIR
 
+    data_dir = DATASETS_DIR / "Naccarato2019"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
     shutil.copyfile(
-        Path(__file__).parent / "data" / "db.csv",
-        DATASETS_DIR / "Naccarato2019" / "Naccarato.csv",
+        Path(__file__).parent / "data" / "db.csv", data_dir / "Naccarato.csv"
     )
 
     dataset = NaccaratoDataset()
