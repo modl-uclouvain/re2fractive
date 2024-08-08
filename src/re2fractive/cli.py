@@ -9,8 +9,7 @@ def main():
     parser.add_argument(
         "--march",
         help="Whether to continue running the campaign.",
-        type=bool,
-        default=False,
+        action="store_true",
     )
 
     campaign_id = parser.parse_args().campaign

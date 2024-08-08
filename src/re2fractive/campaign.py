@@ -421,6 +421,7 @@ class Campaign:
             raise RuntimeError(f"No results found for epoch {this_epoch_index}")
 
         print(f"Gathering features for epoch {this_epoch_index}...")
+        breakpoint()
         featurized_df, target_df = self.gather_features(results_df)
         self.update_training_moddata(featurized_df, target_df)
 
@@ -436,7 +437,7 @@ class Campaign:
         self.select_from_design_space(design_space)
 
     def select_from_design_space(self, design_space):
-        breakpoint()
+        pass
 
     # def start_new_epoch(self):
     #         design_space = self.epochs[-1]["design_space"]
