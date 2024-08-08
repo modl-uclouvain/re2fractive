@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from re2fractive import CAMPAIGN_ID, CAMPAIGNS_DIR, DATASETS_DIR
+from re2fractive.dirs import CAMPAIGN_ID, CAMPAIGNS_DIR, DATASETS_DIR
 
 
 @pytest.mark.skipif(
