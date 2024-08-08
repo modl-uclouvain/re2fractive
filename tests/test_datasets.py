@@ -5,7 +5,7 @@ from re2fractive.dirs import CAMPAIGN_ID, CAMPAIGNS_DIR, DATASETS_DIR
 
 @pytest.mark.skipif(
     not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
-    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+    reason=f"Campaign directory does not exist for campaign {CAMPAIGN_ID}",
 )
 def test_naccarato():
     from re2fractive.datasets import NaccaratoDataset

@@ -54,3 +54,5 @@ jobs:
 
     - name: Run tests
       run: pytest -rs -vvv --durations=0
+      env:
+        RE2FRACTIVE_CAMPAIGN_ID: "tests-0001"

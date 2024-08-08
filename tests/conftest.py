@@ -1,9 +1,18 @@
+import shutil
+from pathlib import Path
+
 import pytest
 
 
 @pytest.fixture
 def trial_dataset():
     from re2fractive.datasets import NaccaratoDataset
+    from re2fractive.dirs import DATASETS_DIR
+
+    shutil.copyfile(
+        Path(__file__).parent / "data" / "db.csv",
+        DATASETS_DIR / "Naccarato2019" / "Naccarato.csv",
+    )
 
     dataset = NaccaratoDataset()
     dataset.load()
