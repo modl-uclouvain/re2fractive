@@ -419,7 +419,6 @@ class Campaign:
             raise RuntimeError(f"No results found for epoch {this_epoch_index}")
 
         print(f"Gathering features for epoch {this_epoch_index}...")
-        breakpoint()
         featurized_df, target_df = self.gather_features(results_df)
         self.update_training_moddata(featurized_df, target_df)
 
