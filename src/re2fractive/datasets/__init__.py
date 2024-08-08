@@ -305,6 +305,8 @@ class NaccaratoDataset(Dataset):
         )
 
         db_path = DATASETS_DIR / cls.id / "Naccarato.csv"
+        if not db_path.parent.exists():
+            db_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not db_path.exists():
             urllib.request.urlretrieve(
