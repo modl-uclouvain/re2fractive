@@ -37,5 +37,6 @@ Some functionality is still missing from the first public release:
 - [ ] Direct integration with atomate2/jobflow-remote workflows for automatic
   job submission after candidate selection.
 - [ ] Automatic selection according to custom acquisition functions.
+- [ ] Automatic addition of new data (via a new learning strategy option) that reruns OPTIMADE queries with a date range and screens new entries/databases.
 
 ![[](img/flow.svg)](img/flow.svg)
