@@ -1,7 +1,18 @@
+import gzip
+import os
 import shutil
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_campaign_id():
+    original_campaign_id = os.environ.get("RE2FRACTIVE_CAMPAIGN_ID")
+    os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = "tests"
+    yield
+    if original_campaign_id is not None:
+        os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = original_campaign_id
 
 
 @pytest.fixture
@@ -14,6 +25,14 @@ def trial_dataset():
 
     shutil.copyfile(
         Path(__file__).parent / "data" / "db.csv", data_dir / "Naccarato.csv"
+    )
+    with gzip.open(
+        Path(__file__).parent / "data" / "Naccarato2019.jsonl.gz", "rb"
+    ) as gzip_in:
+        with open(data_dir / "Naccarato2019.jsonl.gz", "wb") as f:
+            shutil.copyfileobj(gzip_in, f)
+    shutil.copyfile(
+        Path(__file__).parent / "data" / "meta.json", data_dir / "meta.json"
     )
 
     dataset = NaccaratoDataset()

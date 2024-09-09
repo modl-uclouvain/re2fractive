@@ -4,10 +4,10 @@ from re2fractive.dirs import CAMPAIGN_ID, CAMPAIGNS_DIR, DATASETS_DIR
 
 
 @pytest.mark.skipif(
-    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID / "datasets" / "Naccarato2019").exists(),
     reason=f"Campaign directory does not exist for campaign {CAMPAIGN_ID}",
 )
-def test_naccarato():
+def test_naccarato(trial_dataset):
     from re2fractive.datasets import NaccaratoDataset
 
     assert NaccaratoDataset.id == "Naccarato2019"
@@ -106,8 +106,8 @@ def test_naccarato():
 
 
 @pytest.mark.skipif(
-    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
-    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID / "datasets" / "MP2023").exists(),
+    reason=f"Campaign directory does not exist for campaign {CAMPAIGN_ID}",
 )
 def test_mp2023():
     from re2fractive.datasets import MP2023Dataset
@@ -185,8 +185,8 @@ def test_mp2023():
 
 
 @pytest.mark.skipif(
-    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
-    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID / "datasets" / "Alexandria2024").exists(),
+    reason=f"Campaign directory does not exist for campaign {CAMPAIGN_ID}",
 )
 def test_alexandria():
     from re2fractive.datasets import Alexandria2024Dataset
@@ -224,8 +224,8 @@ def test_alexandria():
 
 
 @pytest.mark.skipif(
-    not (CAMPAIGNS_DIR / CAMPAIGN_ID).exists(),
-    reason="Campaign directory does not exist for campaign {CAMPAIGN_ID}",
+    not (CAMPAIGNS_DIR / CAMPAIGN_ID / "datasets" / "GNome2024").exists(),
+    reason=f"Campaign directory does not exist for campaign {CAMPAIGN_ID}",
 )
 def test_gnome():
     from re2fractive.datasets import GNome2024Dataset
