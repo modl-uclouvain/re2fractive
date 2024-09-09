@@ -5,18 +5,19 @@ from pathlib import Path
 
 import pytest
 
+ORIGINAL_CAMPAIGN_ID = os.environ.get("RE2FRACTIVE_CAMPAIGN_ID")
+os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = "tests"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def set_campaign_id():
-    original_campaign_id = os.environ.get("RE2FRACTIVE_CAMPAIGN_ID")
-    os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = "tests"
     yield
-    if original_campaign_id is not None:
-        os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = original_campaign_id
+    if ORIGINAL_CAMPAIGN_ID is not None:
+        os.environ["RE2FRACTIVE_CAMPAIGN_ID"] = ORIGINAL_CAMPAIGN_ID
 
 
 @pytest.fixture
-def trial_dataset():
+def trial_dataset(scope="session", autouse=True):
     from re2fractive.datasets import NaccaratoDataset
     from re2fractive.dirs import DATASETS_DIR
 
