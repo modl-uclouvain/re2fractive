@@ -1,8 +1,15 @@
 from atomate2.vasp.jobs.core import DielectricMaker
 from atomate2.vasp.sets.core import StaticSetGenerator
 
+__all__ = ("Re2DielectricMaker",)
+
 
 class Re2StaticSetGenerator(StaticSetGenerator):
+    """Some minor tweaks to the default static set generator for better
+    agreement with Naccarato et al. (DOI: 10.1103/PhysRevMaterials.3.044602).
+
+    """
+
     user_potcar_functional: str = "PBE_64"
 
     user_incar_settings: dict = {
@@ -26,4 +33,9 @@ class Re2StaticSetGenerator(StaticSetGenerator):
 
 
 class Re2DielectricMaker(DielectricMaker):
+    """A tweaked version of the default dielectric maker for better agreement
+    with Naccarato et al. (DOI: 10.1103/PhysRevMaterials.3.044602).
+
+    """
+
     input_set_generator = Re2StaticSetGenerator

@@ -16,6 +16,7 @@ details around atomate2 & jobflow-remote setup) with:
 ```python
 from re2fractive.campaign import Campaign, LearningStrategy
 from re2fractive.datasets import NaccaratoDataset, MP2023Dataset, Alexandria2024Dataset
+from re2fractive.oracles import Re2DielectricMaker
 
 learning_strategy = LearningStrategy(
     max_n_features=100,
@@ -26,6 +27,7 @@ learning_strategy = LearningStrategy(
 campaign = Campaign.new_campaign_from_dataset(
     NaccaratoDataset,
     datasets=[MP2023Dataset, Alexandria2024Dataset],
+    oracles=[("refractive_index", Re2DielectricMaker)]
     learning_strategy=learning_strategy
 )
 
